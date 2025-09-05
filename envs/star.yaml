@@ -1,0 +1,38 @@
+# envs/star.yaml
+#
+# Conda environment for STAR aligner and STAR-Fusion.
+# Final corrected version resolving all dependency conflicts.
+#
+# Version adjustments:
+# 1. star -> 2.7.8a: Required by star-fusion=1.12.0.
+# 2. samtools -> 1.9: Required by star-fusion=1.12.0 (needs <1.10).
+#
+# To create this environment:
+# conda env create -f envs/star.yaml
+#
+# To activate this environment:
+# conda activate sakitneo-star
+
+name: sakitneo-star
+
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+
+dependencies:
+  # 1. STAR Aligner: Version 2.7.8a is required by star-fusion=1.12.0.
+  - star=2.7.8a
+
+  # 2. STAR-Fusion: The tool for detecting fusion genes.
+  - star-fusion=1.12.0
+
+  # 3. Samtools: Version pinned to 1.9 to satisfy the "<1.10" requirement
+  #    from star-fusion=1.12.0.
+  - samtools=1.9
+
+  # 4. Perl dependencies required by STAR-Fusion are pulled automatically.
+  - perl
+  - perl-dbi
+  - perl-dbd-sqlite
+  - perl-uri

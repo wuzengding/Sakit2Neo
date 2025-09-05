@@ -1,0 +1,5 @@
+sample_id,sampletype,data_type,fq1,fq2,pacbio
+PATIENT1,normal,dna,/home/bioinfo/09.data_CCS_sdfyy/02.Rawdata.illumina.NGS/css006_WES/Cleandata/css006-N-1/css006-N-1_R1.fq.gz,/home/bioinfo/09.data_CCS_sdfyy/02.Rawdata.illumina.NGS/css006_WES/Cleandata/css006-N-1/css006-N-1_R2.fq.gz,
+PATIENT1,tumor,dna,/home/bioinfo/09.data_CCS_sdfyy/02.Rawdata.illumina.NGS/css006_WES/Cleandata/css006-T-1/css006-T-1_R1.fq.gz,/home/bioinfo/09.data_CCS_sdfyy/02.Rawdata.illumina.NGS/css006_WES/Cleandata/css006-T-1/css006-T-1_R2.fq.gz,
+PATIENT1,normal,rna,/home/bioinfo/09.data_CCS_sdfyy/02.Rawdata.illumina.NGS/css006_RNA/css006-T-1/E250080216_L01_UDB-194_1.fq.gz,/home/bioinfo/09.data_CCS_sdfyy/02.Rawdata.illumina.NGS/css006_RNA/css006-T-1/E250080216_L01_UDB-194_2.fq.gz,/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/dataset/pacbio_normal.flnc.fasta.gz
+PATIENT1,tumor,rna,/home/bioinfo/09.data_CCS_sdfyy/02.Rawdata.illumina.NGS/css006_RNA/css006-N-1/E250080216_L01_UDB-195_1.fq.gz,/home/bioinfo/09.data_CCS_sdfyy/02.Rawdata.illumina.NGS/css006_RNA/css006-N-1/E250080216_L01_UDB-195_2.fq.gz,/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/dataset/pacbio_tumor.flnc.fasta.gz

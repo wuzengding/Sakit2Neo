@@ -1,0 +1,18 @@
+# envs/deeptools.yaml
+# ** 关键修复: 固定 matplotlib 版本以解决兼容性问题 **
+
+name: deeptools
+
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+
+dependencies:
+  - deeptools=3.5.1
+  # **核心修复**: 强制安装一个与 deeptools 3.5.1 兼容的 matplotlib 版本
+  - matplotlib-base=3.5.3 # 使用 matplotlib-base 更轻量
+  - python>=3.8
+  - numpy
+  - scipy
+  - samtools

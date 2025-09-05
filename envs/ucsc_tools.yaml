@@ -1,0 +1,15 @@
+# envs/ucsc_tools.yaml
+#
+# Conda环境，用于运行UCSC基因组浏览器的命令行工具，
+# 主要用于基因注释格式的转换。
+
+name: ucsc_tools
+
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+
+dependencies:
+  # 核心转换工具
+  - ucsc-gtftogenepred

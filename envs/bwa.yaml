@@ -1,0 +1,9 @@
+name: bwa-mem
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - bwa=0.7.17
+  - samtools=1.17  # 用于BAM转换
+  - libgcc-ng=12.2.0  # 多线程优化
+  - picard=3.0.0

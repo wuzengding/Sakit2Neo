@@ -1,0 +1,12 @@
+name: strelka2
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - strelka>=2.9    # 使用版本范围而不是具体版本
+  - bcftools>=1.15
+  - htslib>=1.15
+  - python>=2.7, <3.0
+  - perl>=5.30
+  - zlib

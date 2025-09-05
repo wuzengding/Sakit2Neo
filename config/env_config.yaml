@@ -1,0 +1,315 @@
+# config/env_config.yaml
+
+# 基础配置
+resources_base_dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources"
+check_before_run: true    # 运行前检查环境
+force_setup: false        # 强制重新配置环境
+use_conda: true           # 使用conda安装软件
+
+# 参考文件路径
+reference_paths:
+  base_dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/references"
+  genomes_dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/references/genomes"
+  variants_dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/references/variants"
+  annotation_dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/references/annotation"
+  targets_dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/references/targets"
+
+# 软件路径
+software_paths:
+  conda_base_dir: "/home/work/Miniforge3"
+  tools_dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/tools"
+  bin_dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/tools/bin"
+
+# 参考基因组和注释文件
+references:
+  hg38_genome:
+    enabled: true
+    source: "https://storage.googleapis.com/genomics-public-data/resources/broad/hg38/v0/Homo_sapiens_assembly38.fasta"
+    destination: "{genomes_dir}/hg38.fa"
+    decompress: false
+    indexes: ['bwa', 'samtools', 'picard']
+    process_cmd: ""
+
+  hg38_dbsnp:
+    enabled: true
+    source: "https://storage.googleapis.com/genomics-public-data/resources/broad/hg38/v0/dbsnp_146.hg38.vcf.gz"
+    destination: "{variants_dir}/dbsnp_146.hg38.vcf.gz"
+    decompress: false
+    indexes: ['tabix']
+    process_cmd: ""
+
+  hg38_1000G_known_indels:
+    enabled: true
+    source: "https://storage.googleapis.com/genomics-public-data/resources/broad/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz"
+    destination: "{variants_dir}/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz"
+    decompress: false
+    indexes: ['tabix']
+    process_cmd: ""
+
+  hg38_hapmap:
+    enabled: true
+    source: "https://storage.googleapis.com/genomics-public-data/resources/broad/hg38/v0/hapmap_3.3.hg38.vcf.gz"
+    destination: "{variants_dir}/hapmap_3.3.hg38.vcf.gz"
+    decompress: false
+    indexes: ['tabix']
+    process_cmd: ""
+
+  hg38_1000G_phase1_snps:
+    enabled: true
+    source: "https://storage.googleapis.com/genomics-public-data/resources/broad/hg38/v0/1000G_phase1.snps.high_confidence.hg38.vcf.gz"
+    destination: "{variants_dir}/1000G_phase1.snps.high_confidence.hg38.vcf.gz"
+    decompress: false
+    indexes: ['tabix']
+    process_cmd: ""
+
+  hg38_gencode_gtf:
+    enabled: true
+    source: "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_38/gencode.v38.annotation.gtf.gz"
+    destination: "{annotation_dir}/gencode.v38.gtf.gz"
+    decompress: true
+    process_cmd: ""
+
+  hg38_exome_targets:
+    enabled: true
+    source: "https://storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/wgs_calling_regions.hg38.interval_list"
+    destination: "{targets_dir}/wgs_calling_regions.hg38.interval_list"
+    decompress: false
+    process_cmd: ""
+
+  hg38_refseq_genes:
+    enabled: true
+    source: "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/refGene.txt.gz" 
+    destination: "{annotation_dir}/refGene.txt.gz"
+    decompress: false
+    process_cmd: ""
+
+  hg38_cosmic:
+    enabled: true
+    source: "https://cancer.sanger.ac.uk/cosmic/file_download/GRCh38/cosmic/v94/VCF/CosmicCodingMuts.vcf.gz"
+    destination: "{variants_dir}/cosmic_coding_muts.vcf.gz"
+    requires_authentication: true
+    auth_url: "https://cancer.sanger.ac.uk/cosmic/register"
+    decompress: false
+    indexes: ['tabix']
+    process_cmd: ""
+
+# 软件配置
+software:
+  conda_env_name: "bioinfo_env"
+  conda_channels: ["defaults", "bioconda", "conda-forge"]
+  
+  packages:
+    # 核心工具
+    samtools:
+      enabled: true
+      conda: true
+      version: "1.15"
+      check_cmd: "samtools --version"
+    
+    bwa:
+      enabled: true
+      conda: true
+      version: "0.7.17"
+      check_cmd: "bwa 2>&1 | grep -q Version"
+    
+    picard:
+      enabled: true
+      conda: true
+      version: "2.27.4"
+      check_cmd: "picard -h 2>&1 | grep -q 'USAGE:'"
+    
+    gatk4:
+      enabled: true
+      conda: true
+      version: "4.2.6.1"
+      check_cmd: "gatk --help"
+    
+    bcftools:
+      enabled: true
+      conda: true
+      version: "1.15"
+      check_cmd: "bcftools --version"
+    
+    bedtools:
+      enabled: true
+      conda: true
+      version: "2.30.0"
+      check_cmd: "bedtools --version"
+    
+    # RNA-seq工具
+    star:
+      enabled: true
+      conda: true
+      version: "2.7.10a"
+      check_cmd: "STAR --version"
+    
+    salmon:
+      enabled: true
+      conda: true
+      version: "1.9.0"
+      check_cmd: "salmon --version"
+    
+    stringtie:
+      enabled: true
+      conda: true
+      version: "2.2.1"
+      check_cmd: "stringtie --version"
+    
+    star-fusion:
+      enabled: true
+      conda: true
+      version: ""
+      check_cmd: "STAR-Fusion --version 2>&1 | grep -q STAR-Fusion"
+    
+    # 变异注释
+    snpeff:
+      enabled: true
+      conda: true
+      version: "5.1"
+      check_cmd: "snpEff -version 2>&1 | grep -q SnpEff"
+    
+    vep:
+      enabled: true
+      conda: true
+      version: ""
+      check_cmd: "vep --help 2>&1 | grep -q 'Ensembl VEP'"
+    
+    # CNV和MSI分析
+    cnvkit:
+      enabled: true
+      conda: true
+      version: "0.9.9"
+      check_cmd: "cnvkit.py version 2>&1 | grep -q CNVkit"
+    
+    msisensor2:
+      enabled: true
+      conda: true
+      version: ""
+      check_cmd: "msisensor-pro 2>&1 | grep -q 'msisensor-pro [subcommand]'"
+    
+    # PacBio工具
+    pbmm2:
+      enabled: true
+      conda: true
+      version: ""
+      check_cmd: "pbmm2 --version"
+    
+    lima:
+      enabled: true
+      conda: true
+      version: ""
+      check_cmd: "lima --version"
+    
+    isoseq3:
+      enabled: true
+      conda: true
+      version: ""
+      check_cmd: "isoseq3 --version"
+    
+    # 质量控制和报告
+    fastqc:
+      enabled: true
+      conda: true
+      version: "0.11.9"
+      check_cmd: "fastqc --version"
+    
+    multiqc:
+      enabled: true
+      conda: true
+      version: "1.12"
+      check_cmd: "multiqc --version"
+    
+    # 实用工具
+    parallel:
+      enabled: true
+      conda: true
+      version: ""
+      check_cmd: "parallel --version"
+    
+    seqkit:
+      enabled: true
+      conda: true
+      version: ""
+      check_cmd: "seqkit version"
+    
+    igv:
+      enabled: true
+      conda: true
+      version: ""
+      check_cmd: "igv.sh -version 2>&1 | grep -q IGV"
+
+# 环境设置后执行的命令
+post_setup_commands: |
+  # 创建激活脚本
+  echo '#!/bin/bash
+
+  # 设置核心路径变量
+  export PATH={software_paths.bin_dir}:$PATH
+  export RESOURCES_DIR={resources_base_dir}
+  export REF_DIR={reference_paths.base_dir}
+  export TOOLS_DIR={software_paths.tools_dir}
+
+  # 设置参考基因组和注释文件
+  export REF_GENOME={reference_paths.genomes_dir}/hg38.fa
+  export DBSNP={reference_paths.variants_dir}/dbsnp_146.hg38.vcf.gz
+  export KNOWN_INDELS={reference_paths.variants_dir}/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz
+  export KNOWN_SNPS={reference_paths.variants_dir}/1000G_phase1.snps.high_confidence.hg38.vcf.gz
+  export GTF={reference_paths.annotation_dir}/gencode.v38.gtf
+  export REFSEQ={reference_paths.annotation_dir}/refGene.txt.gz
+  export COSMIC={reference_paths.variants_dir}/cosmic_coding_muts.vcf.gz
+  export EXOME_TARGETS={reference_paths.targets_dir}/wgs_calling_regions.hg38.interval_list
+
+  # 激活conda环境
+  if [[ ! -z $(which conda) ]]; then
+    source $(conda info --base)/etc/profile.d/conda.sh
+    conda activate bioinfo_env
+    echo "已激活conda bioinfo_env环境"
+  else
+    echo "警告：未找到conda命令"
+  fi
+
+  echo "环境激活完成！"' > {resources_base_dir}/activate_env.sh
+
+  chmod +x {resources_base_dir}/activate_env.sh
+
+  # 创建环境测试脚本
+  echo '#!/bin/bash
+
+  # 加载环境
+  source {resources_base_dir}/activate_env.sh
+
+  echo "===== 软件版本检查 ====="
+  echo "$(samtools --version | head -n1)"
+  echo "BWA $(bwa 2>&1 | grep Version | cut -d " " -f2)"
+  echo "GATK $(gatk --version | grep "GATK" | cut -d " " -f2-)"
+  echo "$(bcftools --version | head -n1)"
+  echo "$(bedtools --version)"
+
+  if [[ ! -z $(which STAR) ]]; then
+    echo "STAR $(STAR --version)"
+  fi
+
+  if [[ ! -z $(which salmon) ]]; then
+    echo "$(salmon --version | head -n1)"
+  fi
+
+  echo "===== 检查参考基因组文件 ====="
+  echo "参考基因组: $(ls -la $REF_GENOME)"
+  echo "dbSNP: $(ls -la $DBSNP)"
+  echo "已知indels: $(ls -la $KNOWN_INDELS)"
+  echo "已知SNPs: $(ls -la $KNOWN_SNPS)"
+  echo "GTF文件: $(ls -la $GTF)"
+  
+  echo "===== 环境诊断 ====="
+  echo "PATH: $PATH"
+  echo "当前conda环境: $CONDA_DEFAULT_ENV"
+  echo "软件安装目录: {software_paths.tools_dir}"
+  echo "参考基因组目录: {reference_paths.genomes_dir}"
+  echo "注释文件目录: {reference_paths.annotation_dir}"' > {resources_base_dir}/test_env.sh
+  
+  chmod +x {resources_base_dir}/test_env.sh
+  
+  echo "环境配置完成！使用以下命令激活环境："
+  echo "source {resources_base_dir}/activate_env.sh"
+  echo "使用以下命令测试环境："
+  echo "{resources_base_dir}/test_env.sh"

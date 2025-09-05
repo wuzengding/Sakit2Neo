@@ -1,0 +1,121 @@
+outputs: ['qc/fastp/PATIENT1_normal_dna.fastp.json', 'qc/fastp/PATIENT1_normal_dna.fastp.html', 'dna/trimmed/PATIENT1_normal_R1.trimmed.fastq.gz', 'dna/trimmed/PATIENT1_normal_R2.trimmed.fastq.gz', 'qc/coverage/PATIENT1_normal.coverage.hist.txt', 'qc/picard/PATIENT1_normal.insert_size_metrics.txt', 'qc/picard/PATIENT1_normal.alignment_metrics.txt', 'qc/picard/PATIENT1_normal.hs_metrics.txt', 'qc/fastp/PATIENT1_tumor_dna.fastp.json', 'qc/fastp/PATIENT1_tumor_dna.fastp.html', 'dna/trimmed/PATIENT1_tumor_R1.trimmed.fastq.gz', 'dna/trimmed/PATIENT1_tumor_R2.trimmed.fastq.gz', 'qc/coverage/PATIENT1_tumor.coverage.hist.txt', 'qc/picard/PATIENT1_tumor.insert_size_metrics.txt', 'qc/picard/PATIENT1_tumor.alignment_metrics.txt', 'qc/picard/PATIENT1_tumor.hs_metrics.txt', 'qc/fastp/PATIENT1_normal_dna.fastp.json', 'qc/fastp/PATIENT1_normal_dna.fastp.html', 'dna/trimmed/PATIENT1_normal_R1.trimmed.fastq.gz', 'dna/trimmed/PATIENT1_normal_R2.trimmed.fastq.gz', 'qc/coverage/PATIENT1_normal.coverage.hist.txt', 'qc/picard/PATIENT1_normal.insert_size_metrics.txt', 'qc/picard/PATIENT1_normal.alignment_metrics.txt', 'qc/picard/PATIENT1_normal.hs_metrics.txt', 'qc/fastp/PATIENT1_tumor_dna.fastp.json', 'qc/fastp/PATIENT1_tumor_dna.fastp.html', 'dna/trimmed/PATIENT1_tumor_R1.trimmed.fastq.gz', 'dna/trimmed/PATIENT1_tumor_R2.trimmed.fastq.gz', 'qc/coverage/PATIENT1_tumor.coverage.hist.txt', 'qc/picard/PATIENT1_tumor.insert_size_metrics.txt', 'qc/picard/PATIENT1_tumor.alignment_metrics.txt', 'qc/picard/PATIENT1_tumor.hs_metrics.txt', 'dna/variants/germline/PATIENT1.germline.vcf.gz', 'dna/variants/mutect2/PATIENT1.mutect2.vcf.gz', 'dna/variants/varscan2/PATIENT1.varscan2.vcf.gz', 'dna/variants/merged/PATIENT1.merged.vcf.gz', 'dna/variants/annotated/PATIENT1.final.vcf.gz', 'dna/variants/annotated/PATIENT1.vep_summary.html', 'dna/sv/PATIENT1_somaticSV.filtered.vcf.gz', 'dna/sv/PATIENT1_somaticSV.report.txt']
+digraph snakemake_dag {
+    graph[bgcolor=white, margin=0];
+    node[shape=box, style=rounded, fontname=sans,                 fontsize=10, penwidth=2];
+    edge[penwidth=2, color=grey];
+	0[label = "all", color = "0.44 0.6 0.85", style="rounded"];
+	1[label = "fastp_qc_trim_dna\nsample: PATIENT1\ntype: normal", color = "0.25 0.6 0.85", style="rounded,dashed"];
+	2[label = "coverage_stats", color = "0.38 0.6 0.85", style="rounded,dashed"];
+	3[label = "apply_bqsr", color = "0.30 0.6 0.85", style="rounded,dashed"];
+	4[label = "mark_duplicates", color = "0.11 0.6 0.85", style="rounded,dashed"];
+	5[label = "sort_and_fix_tags", color = "0.36 0.6 0.85", style="rounded,dashed"];
+	6[label = "bwa_mem", color = "0.40 0.6 0.85", style="rounded,dashed"];
+	7[label = "base_recalibrator", color = "0.13 0.6 0.85", style="rounded,dashed"];
+	8[label = "index_bam\nprefix: dna/aligned/PATIENT1_normal.recal", color = "0.53 0.6 0.85", style="rounded,dashed"];
+	9[label = "insert_size_metrics", color = "0.63 0.6 0.85", style="rounded,dashed"];
+	10[label = "alignment_metrics", color = "0.02 0.6 0.85", style="rounded,dashed"];
+	11[label = "hs_metrics", color = "0.00 0.6 0.85", style="rounded,dashed"];
+	12[label = "fastp_qc_trim_dna\nsample: PATIENT1\ntype: tumor", color = "0.25 0.6 0.85", style="rounded,dashed"];
+	13[label = "coverage_stats", color = "0.38 0.6 0.85", style="rounded,dashed"];
+	14[label = "apply_bqsr", color = "0.30 0.6 0.85", style="rounded,dashed"];
+	15[label = "mark_duplicates", color = "0.11 0.6 0.85", style="rounded,dashed"];
+	16[label = "sort_and_fix_tags", color = "0.36 0.6 0.85", style="rounded,dashed"];
+	17[label = "bwa_mem", color = "0.40 0.6 0.85", style="rounded,dashed"];
+	18[label = "base_recalibrator", color = "0.13 0.6 0.85", style="rounded,dashed"];
+	19[label = "index_bam\nprefix: dna/aligned/PATIENT1_tumor.recal", color = "0.53 0.6 0.85", style="rounded,dashed"];
+	20[label = "insert_size_metrics", color = "0.63 0.6 0.85", style="rounded,dashed"];
+	21[label = "alignment_metrics", color = "0.02 0.6 0.85", style="rounded,dashed"];
+	22[label = "hs_metrics", color = "0.00 0.6 0.85", style="rounded,dashed"];
+	23[label = "haplotype_caller", color = "0.61 0.6 0.85", style="rounded,dashed"];
+	24[label = "mutect2_caller", color = "0.10 0.6 0.85", style="rounded,dashed"];
+	25[label = "filter_mutect_calls", color = "0.34 0.6 0.85", style="rounded,dashed"];
+	26[label = "mutect2_somatic_no_pon", color = "0.51 0.6 0.85", style="rounded,dashed"];
+	27[label = "calculate_contamination", color = "0.50 0.6 0.85", style="rounded,dashed"];
+	28[label = "get_pileup_summaries_tumor", color = "0.23 0.6 0.85", style="rounded,dashed"];
+	29[label = "get_pileup_summaries_normal", color = "0.48 0.6 0.85", style="rounded,dashed"];
+	30[label = "learn_read_orientation_model", color = "0.59 0.6 0.85", style="rounded,dashed"];
+	31[label = "varscan2_somatic", color = "0.17 0.6 0.85", style="rounded,dashed"];
+	32[label = "merge_variant_callers", color = "0.21 0.6 0.85", style="rounded,dashed"];
+	33[label = "vep_annotate", color = "0.04 0.6 0.85", style="rounded"];
+	34[label = "annotate_cosmic", color = "0.42 0.6 0.85", style="rounded"];
+	35[label = "annotate_gnomad", color = "0.57 0.6 0.85", style="rounded"];
+	36[label = "whatshap_phase", color = "0.46 0.6 0.85", style="rounded,dashed"];
+	37[label = "process_manta_results", color = "0.29 0.6 0.85", style="rounded,dashed"];
+	38[label = "manta_sv_calling", color = "0.19 0.6 0.85", style="rounded,dashed"];
+	1 -> 0
+	2 -> 0
+	9 -> 0
+	10 -> 0
+	11 -> 0
+	12 -> 0
+	13 -> 0
+	20 -> 0
+	21 -> 0
+	22 -> 0
+	23 -> 0
+	24 -> 0
+	31 -> 0
+	32 -> 0
+	33 -> 0
+	37 -> 0
+	3 -> 2
+	8 -> 2
+	4 -> 3
+	7 -> 3
+	5 -> 4
+	6 -> 5
+	1 -> 6
+	4 -> 7
+	3 -> 8
+	3 -> 9
+	3 -> 10
+	5 -> 11
+	14 -> 13
+	19 -> 13
+	15 -> 14
+	18 -> 14
+	16 -> 15
+	17 -> 16
+	12 -> 17
+	15 -> 18
+	14 -> 19
+	14 -> 20
+	14 -> 21
+	16 -> 22
+	3 -> 23
+	8 -> 23
+	25 -> 24
+	26 -> 25
+	27 -> 25
+	30 -> 25
+	14 -> 26
+	3 -> 26
+	19 -> 26
+	8 -> 26
+	28 -> 27
+	29 -> 27
+	14 -> 28
+	19 -> 28
+	3 -> 29
+	8 -> 29
+	26 -> 30
+	14 -> 31
+	3 -> 31
+	19 -> 31
+	8 -> 31
+	24 -> 32
+	31 -> 32
+	34 -> 33
+	35 -> 34
+	36 -> 35
+	32 -> 36
+	14 -> 36
+	3 -> 36
+	19 -> 36
+	8 -> 36
+	38 -> 37
+	14 -> 38
+	19 -> 38
+	3 -> 38
+	8 -> 38
+}            

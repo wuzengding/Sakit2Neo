@@ -1,0 +1,8 @@
+name: manta
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - manta=1.6.0
+  - bcftools=1.17
+  - python=2.7

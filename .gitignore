@@ -1,0 +1,25 @@
+# 忽略 benchmarks/results 目录
+benchmarks/results/
+benchmarks/results_test/
+# 忽略所有 __pycache__ 目录
+**/__pycache__/
+# 忽略 resources 下的大文件目录
+resources/
+resources/annotation/
+resources/homo_sapiens/
+resources/reference/
+resources/targets/
+resources/variants/
+resources/vep_cache/
+resources/vep_plugins/
+# 其他通用忽略项
+*.log
+*.out
+*.pyc
+*.temp
+*.tmp
+# 忽略.ipynb_checkpoints 下的文件
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+workflow/scripts/.ipynb_checkpoints/
+workflow/rules/.ipynb_checkpoints/

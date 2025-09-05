@@ -1,0 +1,279 @@
+# Snakefile
+import os
+import pandas as pd
+from pathlib import Path
+from snakemake.utils import min_version
+
+# 设置最低Snakemake版本
+min_version("6.0.0")
+
+# 配置文件
+configfile: "../config/config.yaml"
+
+# 加载资源配置
+configfile: "../config/resources.yaml"
+
+# 加载样本信息
+samples = pd.read_csv(config.get("samples", "../config/samples.csv"))
+
+# 设置工作目录
+workdir: config.get("outdir", "results")
+
+# 创建必要的目录
+os.makedirs("logs", exist_ok=True)
+os.makedirs("reports", exist_ok=True)
+
+# 辅助函数
+def get_samples_by_type(data_type, sampletype=None):
+    if sampletype:
+        return samples[(samples['data_type'] == data_type) & (samples['sampletype'] == sampletype)]['sample_id'].tolist()
+    return samples[samples['data_type'] == data_type]['sample_id'].tolist()
+
+def get_fq1(wildcards):
+    print("wildcards.sample_____",wildcards.sample)
+    print("wildcards.sampletype_____",wildcards.sampletype)
+    print("wildcards_____",wildcards)
+    return samples[(samples['sample_id'] == wildcards.sample) & 
+                  (samples['sampletype'] == wildcards.sampletype) & 
+                  (samples['data_type'] == 'dna')]['fq1'].iloc[0]
+
+def get_fq2(wildcards):
+    return samples[(samples['sample_id'] == wildcards.sample) & 
+                  (samples['sampletype'] == wildcards.sampletype) & 
+                  (samples['data_type'] == 'dna')]['fq2'].iloc[0]
+
+def get_rna_fq1(wildcards):
+    return samples[(samples['sample_id'] == wildcards.sample) & 
+                  (samples['sampletype'] == wildcards.sampletype) & 
+                  (samples['data_type'] == 'rna')]['fq1'].iloc[0]
+
+def get_rna_fq2(wildcards):
+    return samples[(samples['sample_id'] == wildcards.sample) & 
+                  (samples['sampletype'] == wildcards.sampletype) & 
+                  (samples['data_type'] == 'rna')]['fq2'].iloc[0]
+
+def get_pacbio_fasta(wildcards):
+    return samples[(samples['sample_id'] == wildcards.sample) & 
+                  (samples['sampletype'] == wildcards.sampletype) & 
+                  (samples['data_type'] == 'rna')]['pacbio'].iloc[0]
+
+def has_paired_samples():
+    """检查是否有配对的正常和肿瘤样本"""
+    normal_samples = get_samples_by_type('dna', 'normal')
+    tumor_samples = get_samples_by_type('dna', 'tumor')
+    return len(normal_samples) > 0 and len(tumor_samples) > 0
+
+def has_rna_data():
+    """检查是否有RNA-seq数据"""
+    return len(get_samples_by_type('rna')) > 0
+
+def has_pacbio_data():
+    """检查是否有PacBio数据"""
+    pacbio_samples = samples[samples['pacbio'].notna()]
+    return len(pacbio_samples) > 0
+
+# 确定最终输出文件
+def get_final_output():
+    outputs = []
+    
+    # DNA-seq处理
+    if config["modules"]["wes_processing"]:
+        for sample in get_samples_by_type('dna'):
+            for sampletype in ['normal', 'tumor']:
+                if sampletype in samples[samples['sample_id'] == sample]['sampletype'].values:
+                    outputs.append(f"qc/fastp/{sample}_{sampletype}_dna.fastp.json")
+                    outputs.append(f"qc/fastp/{sample}_{sampletype}_dna.fastp.html")
+                    outputs.append(f"dna/trimmed/{sample}_{sampletype}_R1.trimmed.fastq.gz")
+                    outputs.append(f"dna/trimmed/{sample}_{sampletype}_R2.trimmed.fastq.gz")
+                    outputs.append(f"qc/coverage/{sample}_{sampletype}.mosdepth.global.dist.txt")
+                    outputs.append(f"qc/picard/{sample}_{sampletype}.insert_size_metrics.txt")
+                    outputs.append(f"qc/picard/{sample}_{sampletype}.alignment_metrics.txt")
+                    outputs.append(f"qc/picard/{sample}_{sampletype}.hs_metrics.txt")
+    
+    # 生殖细胞变异
+    if config["modules"]["wes_germline"] and config["variant_callers"]["haplotypecaller"]:
+        for sample in get_samples_by_type('dna', 'normal'):
+            outputs.append(f"dna/variants/germline/{sample}.germline.vcf.gz")
+            outputs.append(f"dna/variants/annotated/{sample}.germline.vep.vcf.gz")
+    
+    # 体细胞变异
+    if config["modules"]["wes_somatic"] and has_paired_samples():
+        for sample in set(samples['sample_id']):
+            if 'normal' in samples[samples['sample_id'] == sample]['sampletype'].values and \
+               'tumor' in samples[samples['sample_id'] == sample]['sampletype'].values:
+                if config["variant_callers"]["mutect2"]:
+                    outputs.append(f"dna/variants/mutect2/{sample}.mutect2.vcf.gz")
+                    outputs.append(f"dna/variants/annotated/{sample}.mutect2.vep.vcf.gz")
+                if config["variant_callers"]["strelka2"]:
+                    outputs.append(f"dna/variants/strelka2/{sample}.strelka2.vcf.gz")
+                    outputs.append(f"dna/variants/annotated/{sample}.strelka2.vep.vcf.gz")
+                if config["variant_callers"]["varscan2"]:
+                    outputs.append(f"dna/variants/varscan2/{sample}.varscan2.vcf.gz")
+                    outputs.append(f"dna/variants/annotated/{sample}.varscan2.vep.vcf.gz")
+                outputs.append(f"reports/{sample}.somatic_variants_report.xlsx")
+                outputs.append(f"dna/variants/phasing/{sample}.phased.vcf.gz")
+                outputs.append(f"reports/{sample}.snv.peptides.faa")
+
+    if config["modules"]["wes_structure_variants"] and has_paired_samples():
+        for sample in set(samples['sample_id']):
+            if 'normal' in samples[samples['sample_id'] == sample]['sampletype'].values and \
+               'tumor' in samples[samples['sample_id'] == sample]['sampletype'].values:
+                if config["sv_callers"]["manta"]:
+                    outputs.append(f"dna/sv/{sample}_somaticSV.filtered.vcf.gz")
+                    outputs.append(f"dna/sv/{sample}_somaticSV.report.txt")
+
+    # RNA处理
+    if config["modules"]["rna_processing"] and has_rna_data():
+        for sample in get_samples_by_type('rna'):
+            for sampletype in ['normal', 'tumor']:
+                if sampletype in samples[(samples['sample_id'] == sample) & (samples['data_type'] == 'rna')]['sampletype'].values:
+                    outputs.append(f"rna/align/{sample}_{sampletype}_dedup.bam")
+                    outputs.append(f"qc/rna/{sample}_{sampletype}_RNA_metrics.txt")
+
+
+# RNA 用于snv validation (只对TUMOR样本)
+    if config["modules"]["rna_snv_validation"] and has_rna_data():
+        for sample in get_samples_by_type('rna'):
+            # 直接检查该样本是否存在'tumor'类型的RNA数据
+            if 'tumor' in samples[(samples['sample_id'] == sample) & (samples['data_type'] == 'rna')]['sampletype'].values:
+                # 如果存在，只为tumor样本添加目标文件
+                outputs.append(f"rna/snv_validation/{sample}_tumor_analysis_ready.bam")
+                outputs.append(f"rna/snv_validation/{sample}_tumor_mutect2_ase_counts.tsv")
+
+    # RNA表达分析
+    if config["modules"]["rna_expression"] and has_rna_data():
+        for sample in get_samples_by_type('rna'):
+            for sampletype in ['normal', 'tumor']:
+                if sampletype in samples[(samples['sample_id'] == sample) & (samples['data_type'] == 'rna')]['sampletype'].values:
+                    outputs.append(f"rna/expression/{sample}_{sampletype}.counts.txt")
+                    outputs.append(f"rna/expression/{sample}_{sampletype}.salmon")
+    
+    # RNA融合分析
+    if config["modules"]["rna_fusion"] and has_rna_data():
+        for sample in get_samples_by_type('rna'):
+            for sampletype in ['normal', 'tumor']:
+                if sampletype in samples[(samples['sample_id'] == sample) & (samples['data_type'] == 'rna')]['sampletype'].values:
+                    outputs.append(f"rna/fusion/{sample}_{sampletype}.fusion.results.tsv")
+    
+    # PacBio分析
+    if config["modules"]["pacbio_processing"] and has_pacbio_data():
+        for sample_row in samples[samples['pacbio'].notna()].itertuples():
+            sample = sample_row.sample_id
+            sampletype = sample_row.sampletype
+            outputs.append(f"pacbio/aligned/{sample}_{sampletype}.aligned.bam")
+    
+    # CNV分析
+    if config["modules"]["cnv_analysis"] and has_paired_samples():
+        for sample in set(samples['sample_id']):
+            if 'normal' in samples[samples['sample_id'] == sample]['sampletype'].values and \
+               'tumor' in samples[samples['sample_id'] == sample]['sampletype'].values:
+                outputs.append(f"dna/cnv/{sample}.cnvkit.cnr")
+                outputs.append(f"dna/cnv/{sample}.cnvkit.cns")
+    
+    # MSI分析
+    if config["modules"]["msi_analysis"] and has_paired_samples():
+        for sample in set(samples['sample_id']):
+            if 'normal' in samples[samples['sample_id'] == sample]['sampletype'].values and \
+               'tumor' in samples[samples['sample_id'] == sample]['sampletype'].values:
+                outputs.append(f"dna/msi/{sample}.msi")
+    
+    # 变异RNA验证
+    if config["modules"]["variant_validation"] and config["modules"]["wes_somatic"] and has_rna_data():
+        for sample in set(samples['sample_id']):
+            if ('normal' in samples[samples['sample_id'] == sample]['sampletype'].values and \
+                'tumor' in samples[samples['sample_id'] == sample]['sampletype'].values) and \
+               'rna' in samples[samples['sample_id'] == sample]['data_type'].values:
+                outputs.append(f"dna/variants/validation/{sample}.somatic.validated.vcf.gz")
+    print("outputs:",outputs)
+    return outputs
+
+# 加载规则文件
+include: "rules/common.smk"
+include: "rules/dna_preprocessing.smk"
+include: "rules/dna_alignment.smk"
+include: "rules/dna_germline_variants.smk"
+include: "rules/dna_somatic_variants.smk"
+include: "rules/dna_structure_variants.smk"
+include: "rules/dna_annotation.smk"
+include: "rules/rna_preprocessing.smk"
+include: "rules/rna_snv_validation.smk"
+include: "rules/dna_variant_reporting.smk"
+include: "rules/dna_faa_generate.smk"
+#include: "rules/rna_expression.smk"
+#include: "rules/rna_fusion.smk"
+#include: "rules/variant_validation.smk"
+#include: "rules/pacbio_preprocessing.smk"
+#include: "rules/pacbio_isoform.smk"
+#include: "rules/cnv_analysis.smk"
+#include: "rules/msi_analysis.smk"
+#include: "rules/qc.smk"
+#include: "rules/reports.smk"
+
+
+# 修正和扩展通配符约束
+SAMPLES_REGEX = "|".join(samples['sample_id'].unique())
+# **重要**: 创建一个不包含'chr'前缀的染色体列表用于约束
+CHROMOSOMES_PLAIN = [c.replace("chr", "") for c in get_chromosomes()]
+CHROMOSOMES_REGEX = "|".join(CHROMOSOMES_PLAIN)
+
+wildcard_constraints:
+    sample=SAMPLES_REGEX,
+    # **核心修复**: 明确只允许 normal 或 tumor
+    sampletype="normal|tumor",
+    type="normal|tumor", 
+    # **核心修复**: 明确只允许染色体名称 (不含'chr')
+    chromosome=CHROMOSOMES_REGEX
+
+# 主规则
+rule all:
+    input:
+        get_final_output()
+
+# 生成配置报告
+rule config_report:
+    output:
+        "reports/config_report.html"
+    run:
+        with open(output[0], "w") as out:
+            out.write("<html><head><title>配置报告</title></head><body>\n")
+            out.write("<h1>分析配置报告</h1>\n")
+            out.write("<h2>样本信息</h2>\n")
+            out.write("<pre>" + samples.to_html() + "</pre>\n")
+            out.write("<h2>启用的模块</h2>\n")
+            out.write("<ul>\n")
+            for module, enabled in config["modules"].items():
+                status = "启用" if enabled else "禁用"
+                out.write(f"<li>{module}: {status}</li>\n")
+            out.write("</ul>\n")
+            out.write("<h2>变异检测器配置</h2>\n")
+            out.write("<ul>\n")
+            for caller, enabled in config["variant_callers"].items():
+                status = "启用" if enabled else "禁用"
+                out.write(f"<li>{caller}: {status}</li>\n")
+            out.write("</ul>\n")
+            out.write("</body></html>\n")
+
+# 生成运行命令示例
+rule generate_run_commands:
+    output:
+        "reports/run_commands.txt"
+    run:
+        with open(output[0], "w") as out:
+            out.write("# 运行完整流程\n")
+            out.write("snakemake --use-conda --cores 24 --configfile config.yaml\n\n")
+            
+            out.write("# 仅运行DNA处理\n")
+            out.write("snakemake --use-conda --cores 24 --configfile config.yaml \\\n")
+            out.write("  --config modules.rna_processing=false modules.rna_expression=false \\\n")
+            out.write("  modules.rna_fusion=false modules.pacbio_processing=false \\\n")
+            out.write("  modules.pacbio_isoform=false modules.variant_validation=false\n\n")
+            
+            out.write("# 仅运行RNA处理\n")
+            out.write("snakemake --use-conda --cores 24 --configfile config.yaml \\\n")
+            out.write("  --config modules.wes_processing=false modules.wes_germline=false \\\n")
+            out.write("  modules.wes_somatic=false modules.cnv_analysis=false \\\n")
+            out.write("  modules.msi_analysis=false\n\n")
+            
+            out.write("# 包含CNV和MSI分析的运行\n")
+            out.write("snakemake --use-conda --cores 24 --configfile config.yaml \\\n")
+            out.write("  --config modules.cnv_analysis=true modules.msi_analysis=true\n\n")

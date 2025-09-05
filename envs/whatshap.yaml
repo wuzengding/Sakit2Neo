@@ -1,0 +1,11 @@
+name: whatshap
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - whatshap=1.7
+  - pysam=0.21.0
+  - python=3.9
+  - bcftools=1.17
+  - htslib=1.17

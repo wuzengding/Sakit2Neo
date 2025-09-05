@@ -1,0 +1,10 @@
+name: gatk4
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - gatk4=4.4.0.0
+  - openjdk=17
+  - bedtools=2.30.0  # 覆盖度分析
+  - picard=3.0.0     # 标记重复
+  - tabix=1.11       # VCF索引

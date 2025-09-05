@@ -1,0 +1,8 @@
+name: picard
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - picard=3.0.0
+  - openjdk=17.0
+  - samtools=1.17    # 配套使用

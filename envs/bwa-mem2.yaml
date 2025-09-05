@@ -1,0 +1,7 @@
+name: bwa-mem2
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - bwa-mem2=2.2.1
+  - samtools=1.19  # 不指定底层库，让 Conda 自动选择

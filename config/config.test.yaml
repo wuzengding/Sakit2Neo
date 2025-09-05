@@ -1,0 +1,137 @@
+# 项目信息
+project_id: "project_test"
+outdir: "/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/results_test"
+samples: "/home/bioinfo/05.pipeline_dev/SakitNeo/config/samples.test.csv"
+
+# 参考基因组和注释数据库
+reference:
+  resources_dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources"
+  star_index: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/reference/star-2.7.5c_GRCh38.d1.vd1_gencode.v36"
+  genome: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/reference/GRCh38.d1.vd1.fa"
+  dbsnp: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/variants/dbsnp_146.hg38.vcf.gz"
+  gnomad: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/variants/gnomad.exomes.v4.0.target.lite.vcf.gz"
+  cosmic: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/variants/CosmicCodingMuts.vcf.gz"
+  known_indels: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/variants/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz"
+  known_snps: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/variants/1000G_phase1.snps.high_confidence.hg38.vcf.gz"
+  capture_kit_bedgz: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/targets/S07604514_AllTracks_V6_60_hg38.bed.gz"
+  capture_kit: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/targets/S07604514_AllTracks_V6_60_hg38.bed"
+  interval_list: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/targets/S07604514_AllTracks_V6_60_hg38.interval_list"
+  refflat: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/annotation/gencode.v36.refFlat.txt"
+  gtf: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/annotation/gencode.v36.annotation.gtf"
+  cancer_gene: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/annotation/cancer_genes.txt"
+  pon: ""
+
+# 分析模块开关
+modules:
+  wes_processing: true     # WES数据预处理
+  wes_germline: true       # WES生殖细胞变异检测
+  wes_somatic: true        # WES体细胞变异检测
+  wes_structure_variants : true  # WES体细胞结构变异检测
+  rna_processing: true    # RNA-seq数据预处理
+  rna_snv_validation: true  # RNAseq 数据验证DNA 的SNV检测结果
+  rna_expression: false    # RNA-seq表达分析
+  rna_fusion: false        # RNA-seq融合分析
+  pacbio_processing: false # PacBio数据预处理
+  pacbio_isoform: false    # PacBio转录本异构体分析
+  variant_annotation: true # 变异注释
+  variant_filtering: false  # 变异过滤
+  variant_validation: false # 变异RNA验证
+  cnv_analysis: false      # 拷贝数变异分析
+  msi_analysis: false      # 微卫星不稳定性分析
+  
+# 变异检测软件选择
+variant_callers:
+  mutect2: true          # 使用Mutect2
+  strelka2: false      # 使用Strelka2
+  varscan2: true          # 使用VarScan2
+  haplotypecaller: true    # 使用HaplotypeCaller
+
+sv_callers:
+  manta: true           # 新增Manta开关
+
+# 变异过滤参数
+filtering:
+  min_depth: 10
+  min_alt_reads: 2
+  min_vaf: 0.005
+  max_germline_vaf: 0.01
+  
+# 分析参数设置
+params:
+  trim_adapters: true
+  mark_duplicates: true
+  bqsr: true
+
+# MuTect2特定参数
+mutect2:
+  # 强调基于tumor vs normal判断
+  tumor_lod: 2.0
+  normal_lod: 2.2
+  # gnomAD仅作为最后辅助判断
+  germline_resource: true
+  genotype_germline: true
+  # 基于测序数据本身的判断参数
+  af_of_alleles_not_in_resource: 0.0003
+  # 其他参数
+  max_reads_per_alignment_start: 50
+  dont_use_soft_clipped_bases: true
+# Strelka2参数
+strelka2:
+  continue_on_error: true
+  exome_mode: true
+# VarScan2参数  
+varscan2:
+  continue_on_error: true
+  min_coverage: 10
+  min_var_freq: 0.005
+  p_value: 0.05
+  somatic_p_value: 0.01
+# 合并参数
+merging:
+  require_mutect2: true
+  optional_callers: ["strelka2", "varscan2"]
+  
+# 相位分析参数
+phasing:
+  tool: "whatshap"  # 或 "gatk"
+  include_germline: true
+  include_somatic: true
+  reference_panel: false
+# VEP注释参数
+vep:
+  version: 110
+  cache_dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/vep_cache"
+  plugins_dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/vep_plugins"
+  plugins_to_install: "SpliceAI"
+  #plugins_to_install: "LoFtool,MaxEntScan,SpliceAI,CADD,dbNSFP"
+  species: "homo_sapiens"
+  assembly: "GRCh38"
+  fork: 8
+
+# ========================
+# 变异过滤参数 ( variant_filtering 模块)
+# ========================
+# Parameters for Somatic Variant Tiering in the report
+somatic_tiering:
+  # Tier 1 (High Confidence) thresholds
+  tier1:
+    min_tumor_vaf: 0.08
+    max_normal_vaf: 0.02
+    min_tumor_depth: 20
+    min_tumor_alt_reads: 5
+    min_tlod: 10.0
+    min_rna_alt_reads: 3
+    require_varscan_validation: true
+
+  # Tier 2 (Medium Confidence) thresholds
+  tier2:
+    min_tumor_vaf: 0.05
+    max_normal_vaf: 0.03
+    min_tumor_depth: 15
+    min_tumor_alt_reads: 4
+    min_tlod: 6.0
+    
+  # Thresholds to flag as likely germline
+  germline_flags:
+    min_normal_vaf_for_germline: 0.2
+# --- END OF  config.yaml ---

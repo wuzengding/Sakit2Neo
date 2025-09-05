@@ -1,0 +1,30 @@
+# envs/vep.yaml
+name: vep
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  # 核心软件: 指定VEP版本以保证可重复性
+  - ensembl-vep=110.1
+  - git
+  
+  # VEP的直接或间接依赖库
+  - bcftools>=1.17
+  - htslib>=1.17
+  - perl=5.32.1
+
+  # 关键的Perl模块
+  # Bio::DB::HTS 是VEP运行的硬性要求
+  - perl-bio-db-hts
+  - perl-dbi
+  - perl-archive-zip
+  - perl-dbd-mysql   
+  - perl-json
+  - perl-text-csv
+  - perl-list-moreutils
+
+  # 辅助工具，用于环境管理和数据下载
+  - unzip
+  - wget
+  - curl

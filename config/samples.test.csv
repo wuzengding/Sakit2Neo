@@ -1,0 +1,5 @@
+sample_id,sampletype,data_type,fq1,fq2,pacbio
+PATIENT1,normal,dna,/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/dataset/dna_normal_R1.fastq.gz,/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/dataset/dna_normal_R2.fastq.gz,
+PATIENT1,tumor,dna,/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/dataset/dna_tumor_R1.fastq.gz,/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/dataset/dna_tumor_R2.fastq.gz,
+PATIENT1,normal,rna,/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/dataset/rna_normal_R1.fastq.gz,/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/dataset/rna_normal_R2.fastq.gz,/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/dataset/pacbio_normal.flnc.fasta.gz
+PATIENT1,tumor,rna,/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/dataset/rna_tumor_R1.fastq.gz,/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/dataset/rna_tumor_R2.fastq.gz,/home/bioinfo/05.pipeline_dev/SakitNeo/benchmarks/dataset/pacbio_tumor.flnc.fasta.gz

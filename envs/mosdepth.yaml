@@ -1,0 +1,6 @@
+name: mosdepth-env
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - mosdepth >=0.3.0  # 建议指定一个合适的版本

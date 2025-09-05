@@ -1,0 +1,223 @@
+# =================================================================
+#               SakitNeo - Data Preparation Workflow
+#                  (Snakefile_setup.smk - FINAL, with Data Protection)
+#
+#  Purpose: Download reference data, build indices, and set up
+#           large annotation caches like VEP and its plugins.
+#           This workflow should be run once to prepare all
+#           necessary resources before running the main pipeline.
+#
+#  Usage:
+#      cd workflow/
+#      snakemake -s Snakefile_setup.smk --use-conda --cores 8 all_setup
+# =================================================================
+
+import os
+from pathlib import Path
+from snakemake.utils import min_version
+
+# --- Configuration ---
+min_version("6.0.0")
+# 共享主流程的配置文件
+configfile: "../config/config.yaml"
+
+
+# =================================================================
+#                      RULE DEFINITIONS
+# =================================================================
+
+# ========================
+#   Reference Genome & Indices
+# ========================
+rule setup_reference_indices:
+    """
+    Builds standard indices for the reference genome:
+    BWA index, samtools faidx (.fai), and Picard sequence dictionary (.dict).
+    """
+    input:
+        ref = config["reference"]["genome"]
+    output:
+        # BWA索引文件
+        bwa_indices = expand(
+            f"{config['reference']['genome']}.{{ext}}",
+            ext=["amb", "ann", "bwt", "pac", "sa"]
+        ),
+        # FAI 索引
+        fai = f"{config['reference']['genome']}.fai",
+        # Picard 序列字典
+        dict = f"{Path(config['reference']['genome']).with_suffix('')}.dict"
+    params:
+        ref_prefix = lambda wildcards, input: Path(input.ref).with_suffix('')
+    log:
+        "../logs/setup/reference_indices.log"
+    threads: 8
+    conda:
+        "../envs/bwa.yaml"
+    shell:
+        """
+        echo "[`date`] ==> Building BWA index..." > {log}
+        bwa index -p {params.ref_prefix} {input.ref} 2>> {log}
+
+        echo "[`date`] ==> Building FASTA index (.fai)..." >> {log}
+        samtools faidx {input.ref} 2>> {log}
+
+        echo "[`date`] ==> Creating sequence dictionary (.dict)..." >> {log}
+        picard CreateSequenceDictionary R={input.ref} O={output.dict} 2>> {log}
+        """
+
+# =================================================================
+#   VEP Setup Workflow (Modular, with Data Protection)
+# =================================================================
+
+# --- 规则 1: VEP 缓存设置 ---
+rule setup_vep_cache:
+    """
+    Downloads, unpacks, and converts the VEP cache. This rule is now
+    independent and robust.
+    """
+    output:
+        # 追踪可靠的哨兵文件，并保护它
+        vep_cache_sentinel = protected(
+            f"{config['vep']['cache_dir']}/{config['vep']['species']}/{config['vep']['version']}_{config['vep']['assembly']}/info.txt"
+        )
+    params:
+        cache_dir = config["vep"]["cache_dir"],
+        species = config["vep"]["species"],
+        assembly = config["vep"]["assembly"],
+        target_dir = f"{config['vep']['cache_dir']}/{config['vep']['species']}/{config['vep']['version']}_{config['vep']['assembly']}"
+    log:
+        "../logs/setup/vep_cache_setup.log"
+    conda:
+        "../envs/vep.yaml"
+    shell:
+        """
+        echo "[`date`] ==> Starting VEP cache setup..." > {log}
+        
+        # 主动清理，防止因预先存在的空目录而导致静默失败
+        if [ -d "{params.target_dir}" ]; then
+            echo "[`date`] ==> Cleaning up pre-existing cache directory..." >> {log}
+            rm -rf "{params.target_dir}"
+        fi
+
+        vep_install \\
+            -a c \\
+            -s {params.species} \\
+            -y {params.assembly} \\
+            -c {params.cache_dir} \\
+            --AUTO c \\
+            --NO_UPDATE >> {log} 2>&1
+        
+        if [ $? -ne 0 ]; then
+            echo "[`date`] ==> ERROR: VEP cache setup failed." >> {log}; exit 1;
+        fi
+        if [ ! -f "{output.vep_cache_sentinel}" ]; then
+            echo "[`date`] ==> ERROR: Sentinel file not found after setup." >> {log}; exit 1;
+        fi
+        echo "[`date`] ==> VEP cache setup completed successfully." >> {log}
+        """
+
+# --- 规则 2: VEP 插件安装 ---
+rule setup_vep_plugins:
+    """
+    Installs specified VEP plugins. Can be run independently.
+    """
+    # **核心修改**: 移除了对 setup_vep_cache 的 input 依赖
+    output:
+        stamp_file = protected(f"{config['vep']['plugins_dir']}/.installed.stamp")
+    params:
+        plugins_dir = config["vep"]["plugins_dir"],
+        plugins_list = config["vep"]["plugins_to_install"],
+        cache_dir = config["vep"]["cache_dir"]
+    log:
+        "../logs/setup/vep_plugins_setup.log"
+    conda:
+        "../envs/vep.yaml"
+    shell:
+        """
+        mkdir -p {params.plugins_dir}
+        echo "[`date`] ==> Starting VEP plugin installation..." > {log}
+        INSTALL_FAILED=0
+        for plugin in {params.plugins_list}; do
+            echo "-------------------" >> {log}
+            echo "[`date`] ==> Installing plugin: $plugin" >> {log}
+            vep_install \\
+                -a p \\
+                -g $plugin \\
+                -r {params.plugins_dir}  \\
+                -c {params.cache_dir} \\
+                --NO_UPDATE >> {log} 2>&1
+
+            if [ $? -ne 0 ]; then
+                echo "[`date`] ==> ERROR: Failed to install plugin: $plugin." >> {log}; INSTALL_FAILED=1;
+            fi
+        done
+        if [ $INSTALL_FAILED -eq 1 ]; then
+            echo "[`date`] ==> ERROR: One or more plugins failed to install." >> {log}; exit 1;
+        fi
+        echo "[`date`] ==> All plugins installed successfully." >> {log}
+        touch {output.stamp_file}
+        """
+
+
+# ========================
+#   Generate refFlat from GTF (专业一步法)
+# ========================
+rule create_refflat_from_gtf:
+    """
+    Converts a GTF file into a correctly formatted refFlat file in a single,
+    efficient step using a gtfToGenePred | awk pipeline.
+    This method correctly places the gene name in the first column.
+    """
+    input:
+        gtf = config["reference"]["gtf"]
+    output:
+        # 现在只有一个最终输出，不再需要临时的genePred文件
+        refflat = config["reference"]["refflat"]
+    log:
+        "../logs/setup/gtf_to_refflat.log"
+    conda:
+        # 只需要 ucsc-gtftogenepred，因为它提供了 gtfToGenePred
+        # awk 是所有Linux系统自带的，不需要在conda中指定
+        "../envs/ucsc_tools.yaml" # 确保这个环境里有 ucsc-gtftogenepred
+    resources:
+        mem_mb = 8000
+    shell:
+        """
+        # 使用管道将 gtfToGenePred 的输出直接传递给 awk
+        # gtfToGenePred:
+        #   -genePredExt:         使用扩展的genePred格式
+        #   -geneNameAsName2:     将基因名放在第12列
+        #   -ignoreGroupsWithoutExons: 增加容错性
+        # awk:
+        #   - 'BEGIN {{ OFS="\\t"}}': 设置输出字段分隔符为制表符
+        #   - '{{print $12, $1, ...}}': 重新排列列的顺序，将第12列(基因名)放在第一位
+        
+        echo "[`date`] ==> Converting GTF to refFlat in a single step..." > {log}
+        
+        gtfToGenePred \\
+            -genePredExt \\
+            -geneNameAsName2 \\
+            -ignoreGroupsWithoutExons \\
+            {input.gtf} /dev/stdout 2>> {log} | \\
+        awk 'BEGIN {{ OFS="\\t"}} {{print $12, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10}}' \\
+            > {output.refflat}
+        
+        # 检查命令是否成功 (通过检查awk的退出码)
+        # 注意: 在管道中，$? 只会是最后一个命令(awk)的退出码。
+        # 使用 set -o pipefail 可以让管道中任何一步失败都导致整个命令失败。
+        # Snakemake 默认开启了 'set -e'，所以我们不需要手动检查 $?
+        
+        echo "[`date`] ==> refFlat file created successfully." >> {log}
+        """
+# =================================================================
+#                       MAIN TARGET RULE
+# =================================================================
+rule all_setup:
+    """
+    This target triggers all data preparation and indexing steps.
+    """
+    input:
+        #rules.setup_reference_indices.output,
+        # 最终目标现在是插件安装的完成
+        #rules.setup_vep_plugins.output.stamp_file,
+        rules.create_refflat_from_gtf.output.refflat,

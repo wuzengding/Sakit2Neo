@@ -1,0 +1,120 @@
+# 为每个规则分配资源
+__default__:
+  threads: 1
+  mem_mb: 4000
+  time: 60
+  
+# 比对相关
+bwa_mem:
+  threads: 16
+  mem_mb: 32000
+  time: 240
+
+# 序列预处理
+mark_duplicates:
+  threads: 4
+  mem_mb: 32000
+  time: 180
+  
+base_recalibrator:
+  threads: 8
+  mem_mb: 16000
+  time: 120
+
+apply_bqsr:
+  threads: 8
+  mem_mb: 16000
+  time: 120
+
+# 变异检测
+mutect2:
+  threads: 4
+  mem_mb: 24000    # 增加内存
+  time: 360        # 增加时间
+
+strelka2_somatic:
+  threads: 16
+  mem_mb: 32000
+  time: 240
+
+varscan2_somatic:
+  threads: 4
+  mem_mb: 16000
+  time: 240
+
+haplotype_caller:
+  threads: 4
+  mem_mb: 16000
+  time: 180
+
+# 变异处理
+merge_variants:
+  threads: 2
+  mem_mb: 8000
+  time: 60
+
+filter_variants:
+  threads: 1
+  mem_mb: 4000
+  time: 30
+
+# 相位分析
+whatshap_phase:
+  threads: 4
+  mem_mb: 16000
+  time: 120
+
+# 变异注释
+annotate_gnomad:
+  threads: 2
+  mem_mb: 8000
+  time: 120
+
+annotate_cosmic:
+  threads: 2
+  mem_mb: 8000
+  time: 120
+
+vep_annotate:
+  threads: 4
+  mem_mb: 16000
+  time: 240
+
+# RNA分析
+star_align:
+  threads: 16
+  mem_mb: 64000
+  time: 300
+  
+salmon_quant:
+  threads: 8
+  mem_mb: 16000
+  time: 120
+
+star_fusion:
+  threads: 12
+  mem_mb: 64000
+  time: 240
+
+# Pacbio分析
+minimap2_align:
+  threads: 16
+  mem_mb: 32000
+  time: 240
+
+# 其他分析
+cnvkit:
+  threads: 8
+  mem_mb: 16000
+  time: 180
+
+msisensor_pro:
+  threads: 4
+  mem_mb: 8000
+  time: 120
+
+# 结构变异
+manta_sv_calling:
+  threads: 16
+  mem_mb: 32000      
+  time: 360

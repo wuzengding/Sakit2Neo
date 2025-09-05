@@ -1,0 +1,14 @@
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.9
+  - pysam
+  - biopython
+  - pip
+  - htslib=1.16
+  - pyensembl>=2.3.0
+  - openpyxl
+  - pandas>=1.3
+  - pyyaml
