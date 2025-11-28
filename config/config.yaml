@@ -21,7 +21,9 @@ reference:
   cancer_gene: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/annotation/cancer_genes.txt"
   pon: ""
   uniport_fasta: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/protein/uniprot_human_mouse_sp_tr.fasta"
-
+  arriba_blacklist: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/arriba_ref/blacklist_hg38_GRCh38_v2.5.1.tsv.gz"
+  arriba_known_fusions: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/arriba_ref/known_fusions_hg38_GRCh38_v2.5.1.tsv.gz"
+  arriba_protein_domains: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/arriba_ref/protein_domains_hg38_GRCh38_v2.5.1.gff3"
 # 分析模块开关
 modules:
   wes_processing: true     # WES数据预处理
@@ -31,7 +33,7 @@ modules:
   rna_processing: true    # RNA-seq数据预处理
   rna_snv_validation: true  # RNAseq 数据验证DNA 的SNV检测结果
   rna_expression: false    # RNA-seq表达分析
-  rna_fusion: false        # RNA-seq融合分析
+  rna_fusion: true        # RNA-seq融合分析
   pacbio_processing: false # PacBio数据预处理
   pacbio_isoform: false    # PacBio转录本异构体分析
   variant_annotation: true # 变异注释
@@ -45,18 +47,11 @@ variant_callers:
   mutect2: true          # 使用Mutect2
   strelka2: false      # 使用Strelka2
   varscan2: true          # 使用VarScan2
-  haplotypecaller: true    # 使用HaplotypeCaller
+  haplotypecaller: false    # 使用HaplotypeCaller
 
 sv_callers:
   manta: true           # 新增Manta开关
 
-# 变异过滤参数
-filtering:
-  min_depth: 10
-  min_alt_reads: 2
-  min_vaf: 0.005
-  max_germline_vaf: 0.01
-  
 # 分析参数设置
 params:
   trim_adapters: true
@@ -112,27 +107,15 @@ vep:
 # ========================
 # 变异过滤参数 ( variant_filtering 模块)
 # ========================
-# Parameters for Somatic Variant Tiering in the report
+# 变异过滤参数
 somatic_tiering:
-  # Tier 1 (High Confidence) thresholds
-  tier1:
-    min_tumor_vaf: 0.08
-    max_normal_vaf: 0.02
-    min_tumor_depth: 20
-    min_tumor_alt_reads: 5
-    min_tlod: 10.0
-    min_rna_alt_reads: 3
-    require_varscan_validation: true
-
-  # Tier 2 (Medium Confidence) thresholds
-  tier2:
-    min_tumor_vaf: 0.05
-    max_normal_vaf: 0.03
-    min_tumor_depth: 15
-    min_tumor_alt_reads: 4
-    min_tlod: 6.0
-    
-  # Thresholds to flag as likely germline
-  germline_flags:
-    min_normal_vaf_for_germline: 0.2
-# --- END OF  config.yaml ---
+  min_normal_vaf_germline: 0.18
+  min_normal_dp_germline: 10
+  min_tumor_vd_somatic: 3
+  min_tumor_vaf_somatic: 0.02
+  #一个“非Germline”变异，其在正常样本中允许存在的最大变异reads数 (VD)，越低越严格
+  max_normal_vd_somatic: 3
+  min_tlod_somatic: 6.0
+  max_gnomad_af_somatic: 0.001
+  min_rna_reads_for_rescue: 2
+  min_rescue_n_vaf_germline: 0.1

@@ -14,7 +14,6 @@ rule report_somatic_variants:
     input:
         # --- VCF Files ---
         somatic_vcf = "dna/variants/annotated/{sample}.mutect2.vep.vcf.gz", # Mutect2 is mandatory
-        germline_vcf = "dna/variants/annotated/{sample}.germline.vep.vcf.gz",
 
         # --- DYNAMIC INPUT: Conditionally include VarScan2 VCF ---
         # Only require this input if varscan2 is enabled in the config.
@@ -32,7 +31,8 @@ rule report_somatic_variants:
         cancer_genes = config["reference"]["cancer_gene"]
     output:
         # The final, polished Excel report
-        xlsx_report = "reports/{sample}.somatic_variants_report.xlsx"
+        xlsx_report_filter = "reports/{sample}.Filtered_variants.xlsx",
+        xlsx_report_Somatic = "reports/{sample}.Somatic_NeoPeptides.xlsx"
     log:
         "logs/reporting/{sample}.somatic_report.log"
     params:

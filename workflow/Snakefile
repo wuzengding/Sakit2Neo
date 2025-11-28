@@ -93,6 +93,7 @@ def get_final_output():
     # 生殖细胞变异
     if config["modules"]["wes_germline"] and config["variant_callers"]["haplotypecaller"]:
         for sample in get_samples_by_type('dna', 'normal'):
+            print("yes, germline variants should been running")
             outputs.append(f"dna/variants/germline/{sample}.germline.vcf.gz")
             outputs.append(f"dna/variants/annotated/{sample}.germline.vep.vcf.gz")
     
@@ -110,8 +111,8 @@ def get_final_output():
                 if config["variant_callers"]["varscan2"]:
                     outputs.append(f"dna/variants/varscan2/{sample}.varscan2.vcf.gz")
                     outputs.append(f"dna/variants/annotated/{sample}.varscan2.vep.vcf.gz")
-                outputs.append(f"reports/{sample}.somatic_variants_report.xlsx")
-                outputs.append(f"dna/variants/phasing/{sample}.phased.vcf.gz")
+                outputs.append(f"reports/{sample}.Somatic_NeoPeptides.xlsx")
+                outputs.append(f"dna/variants/phasing/{sample}.mutect2.phased.vcf.gz")
                 outputs.append(f"reports/{sample}.snv.peptides.faa")
 
     if config["modules"]["wes_structure_variants"] and has_paired_samples():
@@ -153,7 +154,7 @@ def get_final_output():
         for sample in get_samples_by_type('rna'):
             for sampletype in ['normal', 'tumor']:
                 if sampletype in samples[(samples['sample_id'] == sample) & (samples['data_type'] == 'rna')]['sampletype'].values:
-                    outputs.append(f"rna/fusion/{sample}_{sampletype}.fusion.results.tsv")
+                    outputs.append(f"rna/fusion/{sample}_{sampletype}.fusion.tsv")
     
     # PacBio分析
     if config["modules"]["pacbio_processing"] and has_pacbio_data():
@@ -184,6 +185,10 @@ def get_final_output():
                 'tumor' in samples[samples['sample_id'] == sample]['sampletype'].values) and \
                'rna' in samples[samples['sample_id'] == sample]['data_type'].values:
                 outputs.append(f"dna/variants/validation/{sample}.somatic.validated.vcf.gz")
+
+    # QC汇总：
+    outputs.append(f"reports/{sample}.QC.xlsx")
+
     print("outputs:",outputs)
     return outputs
 
@@ -199,8 +204,9 @@ include: "rules/rna_preprocessing.smk"
 include: "rules/rna_snv_validation.smk"
 include: "rules/dna_variant_reporting.smk"
 include: "rules/dna_faa_generate.smk"
+include: "rules/qc.smk"
 #include: "rules/rna_expression.smk"
-#include: "rules/rna_fusion.smk"
+include: "rules/rna_fusion.smk"
 #include: "rules/variant_validation.smk"
 #include: "rules/pacbio_preprocessing.smk"
 #include: "rules/pacbio_isoform.smk"

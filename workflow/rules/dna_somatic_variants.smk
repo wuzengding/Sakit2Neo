@@ -32,7 +32,6 @@ rule mutect2_somatic_with_pon:
         pon = config["reference"]["pon"]
     output:
         vcf = "dna/variants/mutect2/scatter/{sample}.{chromosome}.withpon.vcf.gz",
-        vcf_idx = "dna/variants/mutect2/scatter/{sample}.{chromosome}.withpon.vcf.gz.tbi",
         stats = "dna/variants/mutect2/scatter/{sample}.{chromosome}.withpon.vcf.gz.stats"
     params:
         tumor_name = "{sample}_tumor",
@@ -83,10 +82,9 @@ rule mutect2_somatic_no_pon:
         intervals = config["reference"]["interval_list"],
         gnomad = config["reference"]["gnomad"]
     output:
-        vcf_raw = temp("dna/variants/mutect2/scatter/{sample}.{chromosome}.raw.vcf.gz"),
-        vcf_idx_raw = temp("dna/variants/mutect2/scatter/{sample}.{chromosome}.raw.vcf.gz.tbi"),
-        stats_raw = temp("dna/variants/mutect2/scatter/{sample}.{chromosome}.raw.vcf.gz.stats"),
-        f1r2 = temp("dna/variants/mutect2/scatter/{sample}.{chromosome}.f1r2.tar.gz")
+        vcf_raw = "dna/variants/mutect2/scatter/{sample}.{chromosome}.raw.vcf.gz",
+        stats_raw = "dna/variants/mutect2/scatter/{sample}.{chromosome}.raw.vcf.gz.stats",
+        f1r2 = "dna/variants/mutect2/scatter/{sample}.{chromosome}.f1r2.tar.gz"
     params:
         tumor_name = "{sample}_tumor",
         normal_name = "{sample}_normal",
@@ -151,32 +149,6 @@ rule get_pileup_summaries:
             2> {log}
         """
 
-#rule get_pileup_summaries_normal:
-#    input:
-#        tumor_bam = get_normal_bam_scattered,
-#        tumor_bai = get_normal_bam_scattered.replace(".bam", ".bam.bai"),
-#        intervals = config["reference"]["interval_list"],
-#        sites = config["reference"]["gnomad"]
-#    output:
-#        pileup = "dna/variants/mutect2/{sample}_normal.pileups.table"
-#    log:
-#        "logs/mutect2/{sample}.normal_pileup.log"
-#    conda:
-#        "../../envs/gatk.yaml"
-#    resources:
-#        mem_mb = lambda wildcards, attempt: attempt * 8000,
-#        time = lambda wildcards, attempt: attempt * 60,
-#        threads = 2
-#    shell:
-#        """
-#        gatk GetPileupSummaries \
-#            -I {input.bam} \
-#            -V {input.sites} \
-#            -L {input.intervals} \
-#            -O {output.pileup} \
-#            2> {log}
-#        """
-
 # ========================
 # 计算污染率
 # ========================
@@ -193,20 +165,30 @@ rule calculate_contamination:
         "logs/mutect2/{sample}.contamination.log"
     conda:
         "../../envs/gatk.yaml"
+    params:
+        tempdir = "dna/variants/mutect2"
     resources:
         mem_mb = lambda wildcards, attempt: attempt * 4000,
         time = lambda wildcards, attempt: attempt * 30,
         threads = 1
     shell:
         """
-        TUMOR_ARGS=$(for pileup in {input.tumor_pileups}; do echo -n "-I $pileup "; done)
-        NORMAL_ARGS=$(for pileup in {input.normal_pileups}; do echo -n "-matched $pileup "; done)
+        # 创建临时的合并文件
+        TUMOR_MERGED=$(mktemp --tmpdir={params.tempdir} --suffix='.pileups.table')
+        NORMAL_MERGED=$(mktemp --tmpdir={params.tempdir} --suffix='.pileups.table')
+
+        # 安全地合并肿瘤pileup文件
+        (head -n 1 {input.tumor_pileups[0]} && tail -n +2 -q {input.tumor_pileups}) > $TUMOR_MERGED
+
+        # 安全地合并正常样本pileup文件
+        (head -n 1 {input.normal_pileups[0]} && tail -n +2 -q {input.normal_pileups}) > $NORMAL_MERGED
+
+        # 使用合并后的临时文件运行GATK
         gatk CalculateContamination \
-             $TUMOR_ARGS \
-             $NORMAL_ARGS \
+            -I $TUMOR_MERGED \
+            -matched $NORMAL_MERGED \
             -O {output.contamination} \
-            --tumor-segmentation \
-            {output.segments} \
+            --tumor-segmentation {output.segments} \
             2> {log}
         """
 
@@ -242,14 +224,15 @@ rule learn_read_orientation_model:
 rule filter_mutect_calls:
     input:
         vcf = "dna/variants/mutect2/scatter/{sample}.{chromosome}.raw.vcf.gz",
+        vcf_tbi = "dna/variants/mutect2/scatter/{sample}.{chromosome}.raw.vcf.gz.tbi",
         stats = "dna/variants/mutect2/scatter/{sample}.{chromosome}.raw.vcf.gz.stats",
         contamination = "dna/variants/mutect2/{sample}.contamination.table",
         segments = "dna/variants/mutect2/{sample}.segments.table",
         orientation_model = "dna/variants/mutect2/{sample}.read-orientation-model.tar.gz",
         ref = config["reference"]["genome"]
     output:
-        vcf = temp("dna/variants/mutect2/scatter/{sample}.{chromosome}.nopon.filtered.vcf.gz"),
-        filtering_stats = temp("dna/variants/mutect2/scatter/{sample}.{chromosome}.nopon.filtering.stats")
+        vcf = "dna/variants/mutect2/scatter/{sample}.{chromosome}.nopon.filtered.vcf.gz",
+        filtering_stats = "dna/variants/mutect2/scatter/{sample}.{chromosome}.nopon.filtering.stats"
     log: "logs/mutect2/{sample}.{chromosome}.filter_mutect.log"
     conda: "../../envs/gatk.yaml"
     resources: mem_mb = 8000, time = 45
@@ -272,10 +255,11 @@ rule filter_mutect_calls:
 rule gather_vcfs_with_pon:
     input:
         vcfs = expand("dna/variants/mutect2/scatter/{{sample}}.{chromosome}.withpon.vcf.gz",
+               chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+        vcfs_tbi = expand("dna/variants/mutect2/scatter/{{sample}}.{chromosome}.withpon.vcf.gz.tbi",
                chromosome=[c.replace("chr", "") for c in get_chromosomes()])
     output:
-        vcf = "dna/variants/mutect2/{sample}.mutect2.withpon.vcf.gz",
-        vcf_idx = "dna/variants/mutect2/{sample}.mutect2.withpon.vcf.gz.tbi"
+        vcf = "dna/variants/mutect2/{sample}.mutect2.withpon.vcf.gz"
     log: "logs/gatk/{sample}.gather_withpon.log"
     conda: "../../envs/gatk.yaml"
     resources: mem_mb = 8000, time = 60
@@ -288,10 +272,11 @@ rule gather_vcfs_with_pon:
 rule gather_vcfs_no_pon:
     input:
         vcfs = expand("dna/variants/mutect2/scatter/{{sample}}.{chromosome}.nopon.filtered.vcf.gz",
+               chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+        vcfs_tbi = expand("dna/variants/mutect2/scatter/{{sample}}.{chromosome}.nopon.filtered.vcf.gz.tbi",
                chromosome=[c.replace("chr", "") for c in get_chromosomes()])
     output:
         vcf = "dna/variants/mutect2/{sample}.mutect2.nopon.vcf.gz",
-        vcf_idx = "dna/variants/mutect2/{sample}.mutect2.nopon.vcf.gz.tbi"
     log: 
         "logs/gatk/{sample}.gather_nopon.log"
     conda:
@@ -320,23 +305,49 @@ def get_mutect2_input(wildcards):
             "vcf_idx": f"dna/variants/mutect2/{wildcards.sample}.mutect2.nopon.vcf.gz.tbi",
         }
 
+
 # ========================
 # 规则聚合器 - 确保选择正确的流程
 # ========================
+ruleorder: mutect2_caller > index_vcf
 rule mutect2_caller:
     input:
         unpack(get_mutect2_input)
     output:
         vcf = "dna/variants/mutect2/{sample}.mutect2.vcf.gz",
-        vcf_idx = "dna/variants/mutect2/{sample}.mutect2.vcf.gz.tbi",
+        vcf_idx = "dna/variants/mutect2/{sample}.mutect2.vcf.gz.tbi"
     log:
         "logs/mutect2/{sample}.finalize.log"
+    run:
+        # 获取输出文件所在的目录
+        output_dir = os.path.dirname(output.vcf)
+        
+        # 计算输入文件相对于输出目录的相对路径
+        target_vcf = os.path.relpath(input.vcf, output_dir)
+        target_idx = os.path.relpath(input.vcf_idx, output_dir)
+
+        # 在shell中执行创建链接的命令
+        # 注意：这里需要重定向日志
+        shell(f"ln -sf {target_vcf} {output.vcf} 2> {log}")
+        shell(f"ln -sf {target_idx} {output.vcf}.tbi 2>> {log}")
+
+# ========================
+# 为 VCF.GZ 文件创建索引
+# ========================
+rule index_vcf:
+    input:
+        "{prefix}.vcf.gz"
+    output:
+        "{prefix}.vcf.gz.tbi"
+    log:
+        "logs/gatk/index_{prefix}.vcf.log"
+    conda:
+        "../../envs/gatk.yaml"  # 使用与GATK相同的环境
+    resources:
+        mem_mb = 4000
     shell:
-        """
-        # 直接链接或复制最终文件
-        ln -sf $(basename {input.vcf}) {output.vcf} 2> {log}
-        ln -sf $(basename {input.vcf_idx}) {output.vcf_idx} 2>> {log}
-        """
+        # GATK的IndexFeatureFile会自动生成.tbi后缀的索引文件
+        "gatk IndexFeatureFile -I {input} 2> {log}"
 
 # ========================
 # Strelka2 变异检测 (辅助验证)
@@ -396,49 +407,105 @@ rule strelka2_somatic:
         tabix -p vcf {output.vcf_combined}
         """
 
-rule varscan2_call:
+#rule varscan2_call:
+#    input:
+#        tumor_bam = get_tumor_bam,
+#        normal_bam = get_normal_bam,
+#        tumor_bai = get_tumor_bai,
+#        normal_bai = get_normal_bai,
+#        ref = config["reference"]["genome"],
+#        intervals = config["reference"]["capture_kit"]
+#    output:
+#        snp_vcf = "dna/variants/varscan2/{sample}.snp.vcf",
+#        indel_vcf = "dna/variants/varscan2/{sample}.indel.vcf"
+#    params:
+#        prefix = "dna/variants/varscan2/{sample}",
+#        min_coverage = config["varscan2"]["min_coverage"],
+#        min_var_freq = config["varscan2"]["min_var_freq"],
+#        p_value = config["varscan2"]["p_value"],
+#        somatic_p = config["varscan2"]["somatic_p_value"],
+#        tumor_name = "{sample}_tumor",
+#        normal_name = "{sample}_normal"
+#    log:
+#        mpileup = "logs/varscan2/{sample}.mpileup.log",
+#        varscan = "logs/varscan2/{sample}.varscan.log"
+#    conda:
+#        "../../envs/varscan.yaml"
+#    resources:
+#        mem_mb = lambda wildcards, attempt: attempt * 16000,
+#        time = lambda wildcards, attempt: attempt * 240,
+#    shell:
+#        """
+#        # 1. 生成mpileup文件
+#        samtools mpileup \
+#            -f {input.ref} \
+#            -l {input.intervals} \
+#            -q 1 -Q 13 \
+#            {input.normal_bam} {input.tumor_bam} \
+#            > {params.prefix}.mpileup \
+#            2> {log.mpileup}
+#        
+#        # 2. VarScan2体细胞调用
+#        varscan somatic \
+#            {params.prefix}.mpileup \
+#            {params.prefix} \
+#            --mpileup 1 \
+#            --min-coverage {params.min_coverage} \
+#            --min-var-freq {params.min_var_freq} \
+#            --p-value {params.p_value} \
+#            --somatic-p-value {params.somatic_p} \
+#            --strand-filter 1 \
+#            --output-vcf 1 \
+#            2> {log.varscan}
+#        
+#        # 3. 清理中间文件
+#        #rm -f {params.prefix}.mpileup
+#        """
+
+# ========================
+# VarScan2 变异检测 (按染色体分散，并输出压缩VCF)
+# ========================
+ruleorder: varscan2_somatic_scatter > index_vcf
+rule varscan2_somatic_scatter:
     input:
-        tumor_bam = get_tumor_bam,
-        normal_bam = get_normal_bam,
-        tumor_bai = get_tumor_bai,
-        normal_bai = get_normal_bai,
+        tumor_bam = get_tumor_bam_scattered,
+        normal_bam = get_normal_bam_scattered,
+        tumor_bai = get_tumor_bai_scattered,
+        normal_bai = get_normal_bai_scattered,
         ref = config["reference"]["genome"],
         intervals = config["reference"]["capture_kit"]
     output:
-        snp_vcf = "dna/variants/varscan2/{sample}.snp.vcf",
-        indel_vcf = "dna/variants/varscan2/{sample}.indel.vcf"
+        # **修改输出为 .vcf.gz 和 .vcf.gz.tbi**
+        snp_vcf = "dna/variants/varscan2/scatter/{sample}.{chromosome}.snp.vcf.gz",
+        snp_tbi = "dna/variants/varscan2/scatter/{sample}.{chromosome}.snp.vcf.gz.tbi",
+        indel_vcf = "dna/variants/varscan2/scatter/{sample}.{chromosome}.indel.vcf.gz",
+        indel_tbi = "dna/variants/varscan2/scatter/{sample}.{chromosome}.indel.vcf.gz.tbi"
     params:
-        prefix = "dna/variants/varscan2/{sample}",
+        prefix_uncompressed = "dna/variants/varscan2/scatter/{sample}.{chromosome}",
+        # ... 其他params保持不变 ...
         min_coverage = config["varscan2"]["min_coverage"],
         min_var_freq = config["varscan2"]["min_var_freq"],
         p_value = config["varscan2"]["p_value"],
-        somatic_p = config["varscan2"]["somatic_p_value"],
-        tumor_name = "{sample}_tumor",
-        normal_name = "{sample}_normal"
+        somatic_p = config["varscan2"]["somatic_p_value"]
     log:
-        mpileup = "logs/varscan2/{sample}.mpileup.log",
-        varscan = "logs/varscan2/{sample}.varscan.log"
+        "logs/varscan2/{sample}.{chromosome}.log"
     conda:
-        "../../envs/varscan.yaml"
+        # **重要：确保环境中包含 bgzip 和 tabix (通常samtools或htslib提供)**
+        "../../envs/varscan.yaml" 
     resources:
         mem_mb = lambda wildcards, attempt: attempt * 16000,
-        time = lambda wildcards, attempt: attempt * 240,
-        threads = 4
+        time = lambda wildcards, attempt: attempt * 120
     shell:
         """
-        # 1. 生成mpileup文件
-        samtools mpileup \
+        # 1. 运行 VarScan2，生成临时的未压缩VCF
+        (samtools mpileup \
             -f {input.ref} \
             -l {input.intervals} \
             -q 1 -Q 13 \
             {input.normal_bam} {input.tumor_bam} \
-            > {params.prefix}.mpileup \
-            2> {log.mpileup}
-        
-        # 2. VarScan2体细胞调用
-        varscan somatic \
-            {params.prefix}.mpileup \
-            {params.prefix} \
+        | varscan somatic \
+            /dev/stdin \
+            {params.prefix_uncompressed} \
             --mpileup 1 \
             --min-coverage {params.min_coverage} \
             --min-var-freq {params.min_var_freq} \
@@ -446,18 +513,189 @@ rule varscan2_call:
             --somatic-p-value {params.somatic_p} \
             --strand-filter 1 \
             --output-vcf 1 \
-            2> {log.varscan}
-        
-        # 3. 清理中间文件
-        #rm -f {params.prefix}.mpileup
+        ) > /dev/null 2> {log}
+
+        # 2. 压缩和索引 SNP VCF
+        bgzip {params.prefix_uncompressed}.snp.vcf
+        tabix -p vcf {output.snp_vcf}
+
+        # 3. 压缩和索引 INDEL VCF
+        bgzip {params.prefix_uncompressed}.indel.vcf
+        tabix -p vcf {output.indel_vcf}
         """
+
+# ========================
+# 最终聚合VarScan2的VCF文件 - Gather (处理压缩VCF)
+# ========================
+#rule varscan2_gather_vcfs:
+#    input:
+#        # **输入现在是 .vcf.gz 和 .vcf.gz.tbi**
+#        snp_vcfs = expand("dna/variants/varscan2/scatter/{{sample}}.{chromosome}.snp.vcf.gz", 
+#                          chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+#        snp_tbis = expand("dna/variants/varscan2/scatter/{{sample}}.{chromosome}.snp.vcf.gz.tbi", 
+#                          chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+#        indel_vcfs = expand("dna/variants/varscan2/scatter/{{sample}}.{chromosome}.indel.vcf.gz", 
+#                            chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+#        indel_tbis = expand("dna/variants/varscan2/scatter/{{sample}}.{chromosome}.indel.vcf.gz.tbi", 
+#                            chromosome=[c.replace("chr", "") for c in get_chromosomes()])
+#    output:
+#        # **输出也应该是标准的压缩格式**
+#        snp_vcf = "dna/variants/varscan2/{sample}.snp.vcf.gz",
+#        indel_vcf = "dna/variants/varscan2/{sample}.indel.vcf.gz"
+#    log:
+#        snp_log = "logs/varscan2/{sample}.gather_snp.log",
+#        indel_log = "logs/varscan2/{sample}.gather_indel.log"
+#    conda:
+#        "../../envs/gatk.yaml" # 使用GATK环境
+#    resources:
+#        mem_mb = 8000, 
+#        time = 60
+#    shell:
+#        """
+#        # 和您的 mutect2 gather 规则几乎完全一样
+#        SNP_INPUT_ARGS=$(for vcf in {input.snp_vcfs}; do echo -n "-I $vcf "; done)
+#        gatk --java-options "-Xmx{resources.mem_mb}m" GatherVcfs $SNP_INPUT_ARGS -O {output.snp_vcf} 2> {log.snp_log}
+#        
+#        INDEL_INPUT_ARGS=$(for vcf in {input.indel_vcfs}; do echo -n "-I $vcf "; done)
+#        gatk --java-options "-Xmx{resources.mem_mb}m" GatherVcfs $INDEL_INPUT_ARGS -O {output.indel_vcf} 2> {log.indel_log}
+#        """
+
+## ========================
+## 最终聚合VarScan2的VCF文件 - Gather (合并、修复、压缩)
+## ========================
+#rule varscan2_gather_vcfs:
+#    input:
+#        snp_vcfs = expand("dna/variants/varscan2/scatter/{{sample}}.{chromosome}.snp.vcf.gz", 
+#                          chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+#        snp_idx = expand("dna/variants/varscan2/scatter/{{sample}}.{chromosome}.snp.vcf.gz.tbi", 
+#                          chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+#        indel_vcfs = expand("dna/variants/varscan2/scatter/{{sample}}.{chromosome}.indel.vcf.gz", 
+#                            chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+#        indel_idx = expand("dna/variants/varscan2/scatter/{{sample}}.{chromosome}.indel.vcf.gz.tbi", 
+#                            chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+#        ref_fai = config["reference"]["genome"] + ".fai"
+#    output:
+#        snp_vcf = "dna/variants/varscan2/{sample}.snp.vcf.gz",
+#        indel_vcf = "dna/variants/varscan2/{sample}.indel.vcf.gz"
+#    log:
+#        "logs/varscan2/{sample}.gather.log"
+#    conda:
+#        "../../envs/bcftools.yaml" # 确保有 bcftools, bgzip, tabix
+#    resources:
+#        mem_mb = 8000, 
+#        time = 60
+#    shell:
+#        """
+#        # 定义一些临时文件名
+#        COMBINED_SNP_VCF=dna/variants/varscan2/{wildcards.sample}.combined.snp.vcf
+#        COMBINED_INDEL_VCF=dna/variants/varscan2/{wildcards.sample}.combined.indel.vcf
+#        HEADER_FILE=dna/variants/varscan2/{wildcards.sample}.header.txt
+#
+#        # 步骤 1: 使用 bcftools 合并所有 SNP VCF 文件
+#        # -a 允许不同样本集, -f 允许合并列表中的第一个文件不存在(以防某个染色体没变异)
+#        bcftools concat -a -f {input.snp_vcfs} > $COMBINED_SNP_VCF 2> {log}
+#
+#        # 步骤 2: 使用 bcftools 合并所有 INDEL VCF 文件
+#        bcftools concat -a -f {input.indel_vcfs} > $COMBINED_INDEL_VCF 2>> {log}
+#
+#        # 步骤 3: 从参考基因组 .fai 文件生成 contig 头部信息
+#        awk 'BEGIN{{FS="\\t"}}; {{print "##contig=<ID="$1",length="$2">"}}' {input.ref_fai} > $HEADER_FILE
+#
+#        # 步骤 4: 修复头部、压缩并索引最终的 SNP VCF
+#        bcftools reheader -h $HEADER_FILE $COMBINED_SNP_VCF | bgzip > {output.snp_vcf}
+#        tabix -p vcf {output.snp_vcf}
+#
+#        # 步骤 5: 修复头部、压缩并索引最终的 INDEL VCF
+#        bcftools reheader -h $HEADER_FILE $COMBINED_INDEL_VCF | bgzip > {output.indel_vcf}
+#        tabix -p vcf {output.indel_vcf}
+#
+#        # 步骤 6: 清理临时合并文件和头部文件
+#        rm -f $COMBINED_SNP_VCF $COMBINED_INDEL_VCF $HEADER_FILE
+#        """
+
+rule varscan2_gather_vcfs:
+    input:
+        snp_vcfs = expand("dna/variants/varscan2/scatter/{{sample}}.{chromosome}.snp.vcf.gz",
+                          chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+        snp_idx = expand("dna/variants/varscan2/scatter/{{sample}}.{chromosome}.snp.vcf.gz.tbi",
+                          chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+        indel_vcfs = expand("dna/variants/varscan2/scatter/{{sample}}.{chromosome}.indel.vcf.gz",
+                            chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+        indel_idx = expand("dna/variants/varscan2/scatter/{{sample}}.{chromosome}.indel.vcf.gz.tbi",
+                            chromosome=[c.replace("chr", "") for c in get_chromosomes()]),
+        ref_fai = config["reference"]["genome"] + ".fai"
+    output:
+        snp_vcf = "dna/variants/varscan2/{sample}.snp.vcf",
+        indel_vcf = "dna/variants/varscan2/{sample}.indel.vcf",
+        snp_vcf_gz = "dna/variants/varscan2/{sample}.snp.vcf.gz",
+        indel_vcf_gz = "dna/variants/varscan2/{sample}.indel.vcf.gz"
+    log:
+        "logs/varscan2/{sample}.gather.log"
+    conda:
+        "../../envs/bcftools.yaml"
+    resources:
+        mem_mb = 8000,
+        time = 60
+    shell:
+        """
+        # 定义临时文件
+        SNP_LIST_FILE={wildcards.sample}.snp_list_actual.txt
+        INDEL_LIST_FILE={wildcards.sample}.indel_list_actual.txt
+        CONTIG_HEADER_FRAGMENT=dna/variants/varscan2/{wildcards.sample}.contig_header_frag.txt
+        FULL_HEADER_TEMP=dna/variants/varscan2/{wildcards.sample}.full_header.txt
+
+        # 从参考基因组 .fai 文件生成 contig 头部信息片段
+        awk 'BEGIN{{FS="\\t"}}; {{print "##contig=<ID="$1",length="$2">"}}' {input.ref_fai} > $CONTIG_HEADER_FRAGMENT
+
+        # --- 处理 SNP VCFs ---
+        # 过滤掉不存在的 SNP VCF 文件，只将存在的写入列表文件
+        for f in {input.snp_vcfs}; do
+            if [ -f "$f" ]; then
+                echo "$f" >> $SNP_LIST_FILE
+            fi
+        done
+
+        # 确保至少有一个 SNP VCF 文件存在以提取头部
+        if [ ! -s $SNP_LIST_FILE ]; then
+            echo "Error: No SNP VCF files found for {wildcards.sample}. This should not happen." >&2
+            exit 1
+        fi
+
+        # 1. 使用 bcftools concat 合并所有存在的 SNP VCF 文件
+        bcftools concat -a -f $SNP_LIST_FILE > {output.snp_vcf} 2> {log}
+        bgzip -k {output.snp_vcf}
+        tabix -p vcf {output.snp_vcf_gz}
+
+
+        # --- 处理 INDEL VCFs ---
+        # 过滤掉不存在的 INDEL VCF 文件，只将存在的写入列表文件
+        for f in {input.indel_vcfs}; do
+            if [ -f "$f" ]; then
+                echo "$f" >> $INDEL_LIST_FILE
+            fi
+        done
+
+        # 确保至少有一个 INDEL VCF 文件存在以提取头部
+        if [ ! -s $INDEL_LIST_FILE ]; then
+            echo "Error: No INDEL VCF files found for {wildcards.sample}. This should not happen." >&2
+            exit 1
+        fi
+ 
+        # 1. 使用 bcftools concat 合并所有存在的 INDEL VCF 文件
+        bcftools concat -a -f $INDEL_LIST_FILE > {output.indel_vcf} 2>> {log}
+        bgzip -k {output.indel_vcf}
+        tabix -p vcf {output.indel_vcf_gz}
+
+        # 清理所有临时文件
+        rm -f $SNP_LIST_FILE $INDEL_LIST_FILE
+        """
+
 rule varscan2_reformat:
     input:
         snp_vcf = "dna/variants/varscan2/{sample}.snp.vcf",
-        indel_vcf = "dna/variants/varscan2/{sample}.indel.vcf",
+        indel_vcf = "dna/variants/varscan2/{sample}.indel.vcf"
     output:
-        vcf = "dna/variants/varscan2/{sample}.varscan2.vcf.gz",
-        vcf_idx = "dna/variants/varscan2/{sample}.varscan2.vcf.gz.tbi"
+        vcf = "dna/variants/varscan2/{sample}.varscan2.vcf.gz"
     params:
         prefix = "dna/variants/varscan2/{sample}",
         script_dir = workflow.basedir
@@ -465,7 +703,7 @@ rule varscan2_reformat:
         combine = "logs/varscan2/{sample}.combine.log",
         reformat = "logs/varscan2/{sample}.reformat.log"
     conda:
-        "../../envs/python.yaml"  # 或者创建一个专门用于格式化的轻量级环境
+        "../../envs/python.yaml"
     threads: 2
     shell:
         """
@@ -489,40 +727,153 @@ rule varscan2_reformat:
         """
 
 # ========================
+# VarScan2 VCF Reformatting (Handles compressed input)
+# ========================
+#rule varscan2_reformat:
+#    input:
+#        # **MODIFICATION**: Input files are now the .vcf.gz from the gather step
+#        snp_vcf = "dna/variants/varscan2/{sample}.snp.vcf.gz",
+#        indel_vcf = "dna/variants/varscan2/{sample}.indel.vcf.gz"
+#    output:
+#        vcf = "dna/variants/varscan2/{sample}.varscan2.vcf.gz"
+#    params:
+#        prefix = "dna/variants/varscan2/{sample}",
+#        script_dir = workflow.basedir
+#    log:
+#        combine = "logs/varscan2/{sample}.combine.log",
+#        reformat = "logs/varscan2/{sample}.reformat.log"
+#    conda:
+#        # **MODIFICATION**: Using a dedicated environment with all tools
+#        "../../envs/bcftools.yaml" 
+#    threads: 2
+#    shell:
+#        """
+#        # 1. Combine SNP and INDEL VCFs using bcftools for safe decompression
+#        (
+#          # Get the header from the SNP VCF file
+#          bcftools view -h {input.snp_vcf} | \
+#          
+#          # Get the variant records (no header) from both files, decompressing on the fly
+#          bcftools concat -a -H | \
+#                -f < (echo -e "{input.snp_vcf}\n{input.indel_vcf}") | \
+#            sort -k1,1V -k2,2n ) > {params.prefix}.combined.vcf 2> {log.combine}
+#        
+#        # 2. Use Python script to reformat the combined VCF and compress the final output.
+#        #    This part does not need to change as it operates on the intermediate plain-text file.
+#        python {params.script_dir}/scripts/reformat_varscan_vcf.py \
+#            {params.prefix}.combined.vcf \
+#            {params.prefix}.reformatted.vcf \
+#            {output.vcf} \
+#            2> {log.reformat}
+#        
+#        # 3. Clean up temporary files
+#        rm -f {params.prefix}.combined.vcf {params.prefix}.reformatted.vcf
+#        """
+
+# ========================
 #    预规范化VCF (原子化)
 # ========================
+#ruleorder: normalize_vcf > index_vcf
 #rule normalize_vcf:
-#    """
-#    A general and robust rule to normalize a VCF file from any source.
-#    It performs a two-step normalization (split then merge) to guarantee
-#    that the output VCF has exactly one canonical record per genomic position,
-#    making it compatible with GATK tools.
-#    """
 #    input:
 #        vcf = "dna/variants/{caller}/{sample}.{caller}.vcf.gz",
+#        vcf_idx = "dna/variants/{caller}/{sample}.{caller}.vcf.gz.tbi",
 #        ref = config["reference"]["genome"]
 #    output:
-#        # **重要**: 这个输出现在是最终的、可用于所有下游分析的规范化文件
 #        vcf = "dna/variants/{caller}/{sample}.{caller}.norm.vcf.gz",
 #        vcf_idx = "dna/variants/{caller}/{sample}.{caller}.norm.vcf.gz.tbi"
 #    log:
 #        "logs/bcftools/{caller}/{sample}.{caller}.norm.log"
+#    params:
+#        # --decompose: 分解 MNP 和复杂 INDEL
+#        # -m -any: 分解多等位基因位点
+#        # -f ref: 左对齐和标准化
+#        norm_opts = "--atomize -m -any -f"
 #    conda:
-#        "../../envs/bcftools.yaml"
+#        "../../envs/bcftools.yaml"  # 确保这个环境有较新版本的bcftools
 #    shell:
 #        """
-#       # 步骤 1: 原子化 - 将所有变异拆分为最简单的双等位基因形式
-#        # 使用 bcftools norm -m - 来拆分多等位基因位点，并进行左对齐
-#        # 输出到一个临时的管道
-#        bcftools norm -m - -f {input.ref} {input.vcf} -O z | \\
-#        
-#        # 步骤 2: 重组 - 将同一位置的所有简单变异合并回单行
-#        # 使用 bcftools norm -m +any 从管道读取，并输出最终文件
-#        bcftools norm -m +any -f {input.ref} - -O z -o {output.vcf} > {log} 2>&1
-#        
-#        # 为最终的规范化文件创建索引
+#        # 使用纯 bcftools 方案进行分解和标准化
+#        bcftools norm {params.norm_opts} {input.ref} {input.vcf} -Oz -o {output.vcf} &> {log}
+#
+#        # 为新生成的VCF创建索引
 #        tabix -p vcf {output.vcf}
 #        """
+
+# ========================
+# 专门为ASEReadCounter准备的VCF标准化
+# ========================
+ruleorder: prepare_vcf_for_ase > index_vcf
+rule prepare_vcf_for_ase:
+    input:
+        vcf = "dna/variants/mutect2/{sample}.mutect2.vcf.gz",
+        vcf_idx = "dna/variants/mutect2/{sample}.mutect2.vcf.gz.tbi",
+        ref = config["reference"]["genome"]
+    output:
+        vcf = "dna/variants/mutect2/{sample}.mutect2.ase_ready.vcf.gz",
+        vcf_idx = "dna/variants/mutect2/{sample}.mutect2.ase_ready.vcf.gz.tbi"
+    log:
+        "logs/gatk/{sample}.prepare_ase_vcf.log"
+    conda:
+        "../../envs/gatk.yaml"
+    resources:
+        mem_mb = 8000,
+        time = 60
+    shell:
+        """
+        # 临时文件
+        TEMP_VCF1=$(mktemp --suffix='.vcf')
+        TEMP_VCF2=$(mktemp --suffix='.vcf')
+        TEMP_VCF3=$(mktemp --suffix='.vcf')
+        
+        # 1. 首先解压VCF文件
+        zcat {input.vcf} > $TEMP_VCF1 2>> {log}
+        
+        # 2. 拆分多等位基因并左对齐
+        gatk LeftAlignAndTrimVariants \
+            -R {input.ref} \
+            -V $TEMP_VCF1 \
+            --split-multi-allelics \
+            --dont-trim-alleles \
+            -O $TEMP_VCF2 \
+            2>> {log}
+        
+        # 3. 选择通过过滤的双等位基因SNV，并去除重复
+        gatk SelectVariants \
+            -R {input.ref} \
+            -V $TEMP_VCF2 \
+            --select-type-to-include SNP \
+            --restrict-alleles-to BIALLELIC \
+            --exclude-filtered true \
+            --remove-unused-alternates true \
+            --exclude-non-variants true \
+            -O $TEMP_VCF3 \
+            2>> {log}
+        
+        # 4. 去除重复位点（保留第一个遇到的）
+        awk '
+        BEGIN {{OFS="\t"}}
+        /^#/ {{print; next}}
+        {{
+            pos = $1 ":" $2
+            if (pos in seen) {{
+                next
+            }}
+            seen[pos] = 1
+            print
+        }}
+        ' $TEMP_VCF3 > $TEMP_VCF3.dedup 2>> {log}
+        
+        # 5. 压缩和索引
+        bgzip -c $TEMP_VCF3.dedup > {output.vcf} 2>> {log}
+        
+        # 6. 创建索引
+        gatk IndexFeatureFile -I {output.vcf} 2>> {log}
+        
+        # 7. 清理临时文件
+        rm -f $TEMP_VCF1 $TEMP_VCF2 $TEMP_VCF3 $TEMP_VCF3.dedup
+        """
+
 
 #在文件顶部或规则前定义辅助函数
 #def dynamic_file(caller):

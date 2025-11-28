@@ -35,6 +35,74 @@ except ImportError:
     pyensembl = None
 
 
+# VEP Consequence Severity Order (from most to least severe)
+# Based on Ensembl's recommendations and general impact on protein function.
+CONSEQUENCE_SEVERITY_ORDER = [
+    'transcript_ablation',
+    'splice_acceptor_variant',
+    'splice_donor_variant',
+    'stop_gained',
+    'frameshift_variant',
+    'stop_lost',
+    'start_lost',
+    'transcript_amplification',
+    'inframe_insertion',
+    'inframe_deletion',
+    'missense_variant',
+    'protein_altering_variant',
+    'splice_donor_5th_base_variant',
+    'splice_region_variant',
+    'splice_donor_region_variant',
+    'splice_polypyrimidine_tract_variant',
+    'incomplete_terminal_codon_variant',
+    'start_retained_variant',
+    'stop_retained_variant',
+    'synonymous_variant',
+    'coding_sequence_variant',
+    'mature_miRNA_variant',
+    '5_prime_UTR_variant',
+    '3_prime_UTR_variant',
+    'non_coding_transcript_exon_variant',
+    'intron_variant',
+    'NMD_transcript_variant',
+    'non_coding_transcript_variant',
+    'coding_transcript_variant', # Added for completeness
+    'upstream_gene_variant',
+    'downstream_gene_variant',
+    'TFBS_ablation',
+    'TFBS_amplification',
+    'TF_binding_site_variant',
+    'regulatory_region_ablation',
+    'regulatory_region_amplification',
+    'regulatory_region_variant',
+    'feature_elongation',
+    'feature_truncation',
+    'intergenic_variant',
+    'sequence_variant' # Should be last
+]
+
+# Create a mapping for quick lookups. The lower the number, the more severe.
+CONSEQUENCE_SEVERITY_MAP = {
+    consequence: i for i, consequence in enumerate(CONSEQUENCE_SEVERITY_ORDER)
+}
+
+# Define a set of consequences that DEFINITELY alter the protein sequence.
+# This excludes synonymous variants and other non-coding/benign changes.
+PROTEIN_ALTERING_CONSEQUENCES = {
+    'transcript_ablation',
+    'splice_acceptor_variant',
+    'splice_donor_variant',
+    'stop_gained',
+    'frameshift_variant',
+    'stop_lost',
+    'start_lost',
+    'inframe_insertion',
+    'inframe_deletion',
+    'missense_variant',
+    'protein_altering_variant',
+}
+
+
 def get_args():
     """
     Determines if running under Snakemake or standalone and returns
@@ -109,11 +177,59 @@ def calculate_coding_ratio(csq_entries):
     coding_transcripts = sum(1 for e in csq_entries if e.get("BIOTYPE") == "protein_coding")
     return f"{coding_transcripts}//{total_transcripts}"
 
+def calculate_AAchaged_ratio(csq_entries):
+    if not csq_entries: return "0//0"
+    total_transcripts = len(csq_entries)
+    protein_altering_count = 0
+    for e in csq_entries:
+        consequences = e.get("Consequence", "").split('&')
+        if any(c in PROTEIN_ALTERING_CONSEQUENCES for c in consequences):
+            protein_altering_count += 1
+    return f"{protein_altering_count}//{total_transcripts}"
+
+def get_most_severe_consequence_rank(csq_entry):
+    """
+    Finds the most severe consequence in a CSQ entry (which can have multiple, e.g., "A&B").
+    Returns its rank from our map. Lower is more severe.
+    """
+    consequences = csq_entry.get("Consequence", "").split('&')
+    # Assign a very high (not severe) rank as default
+    min_rank = len(CONSEQUENCE_SEVERITY_ORDER) 
+    for c in consequences:
+        rank = CONSEQUENCE_SEVERITY_MAP.get(c, min_rank)
+        if rank < min_rank:
+            min_rank = rank
+    return min_rank
+
+def get_amino_acid_sub_status(consequences):
+    """
+    根据VEP的consequence列表，判断氨基酸的变化子类型。
+
+    Args:
+        consequences (list): 从VEP CSQ字段解析出的consequence字符串列表。
+
+    Returns:
+        str: 'No_AA_Altered', 'Stop_Gained', 'Long_AA_Altered', or 'Single_AA_Altered'.
+    """
+    is_protein_altering = any(c in PROTEIN_ALTERING_CONSEQUENCES for c in consequences)
+    
+    if not is_protein_altering:
+        return "No_AA_Altered"
+    
+    # 如果是蛋白质改变类型，再进行细分
+    if 'stop_gained' in consequences:
+        return "Stop_Gained"
+    elif any(c in ['frameshift_variant', 'splice_acceptor_variant', 'splice_donor_variant', 'stop_lost'] for c in consequences):
+        return "Long_AA_Altered"
+    else:
+        # 包括 missense_variant, inframe_insertion, inframe_deletion 等
+        return "Single_AA_Altered"
 
 def parse_vcf_record(record, alt_allele_index, csq_header, sample_id):
     """Parses a single allele from a VCF record."""
     alt_allele = record.alts[alt_allele_index]
     chrom, pos, ref = record.chrom, record.pos, record.ref
+    #print("chrom", "pos", chrom, pos, record.chrom, record.pos)
     variant_key = f"{chrom}-{pos}-{ref}-{alt_allele}"
     info = record.info
 
@@ -122,6 +238,7 @@ def parse_vcf_record(record, alt_allele_index, csq_header, sample_id):
     else:
         n_name, t_name = "NORMAL", "TUMOR"
 
+    #print(n_name, t_name)
     n_fmt, t_fmt = record.samples.get(n_name, {}), record.samples.get(t_name, {})
     n_dp, t_dp = get_safe_format_field(n_fmt, "DP", 0), get_safe_format_field(t_fmt, "DP", 0)
     n_ad, t_ad = n_fmt.get("AD", (0, 0)), t_fmt.get("AD", (0, 0))
@@ -139,142 +256,54 @@ def parse_vcf_record(record, alt_allele_index, csq_header, sample_id):
     
     n_vaf = n_alt_reads / n_dp if n_dp > 0 else 0
     t_vaf = t_alt_reads / t_dp if t_dp > 0 else 0
-    
-    all_csq = [dict(zip(csq_header, e.split("|"))) for e in info.get("CSQ", [])]
-    
-    allele_csq = [e for e in all_csq if e.get("Allele") == alt_allele]
 
-    canonical = next((e for e in allele_csq if e.get("CANONICAL") == "YES"), None)
-    if not canonical:
-        canonical = next((e for e in allele_csq if e.get("BIOTYPE") == "protein_coding"), allele_csq[0] if allele_csq else {})
-    if not canonical: canonical = {}
+    # 一个record只有一个"CSQ"字符串，但是一个CSQ，可能存在多个Allele，"
+    # "比如 “chr1	1312198	.	TG	T,TGG,TGGG,TGGGG”这样的复杂突变"
+    all_csq = [dict(zip(csq_header, e.split("|"))) for e in info.get("CSQ", [])]
+    # 所以用Allele来选择对应突变的CSQ内容
+    allele_csq = [e for e in all_csq if e.get("Allele") == alt_allele]
+    
+    # --- 新代码 ---
+    if not allele_csq:
+        canonical = {}
+    else:
+        # Sort all annotations for this allele based on severity, then by CANONICAL tag as a tie-breaker
+        sorted_csq = sorted(
+            allele_csq,
+            key=lambda csq: (
+                get_most_severe_consequence_rank(csq),
+                csq.get("CANONICAL") != "YES" # False (is CANONICAL) comes before True
+            ) ## key 返回的是一个元组（Tuple），例如 (3, False) 或 (10, True)
+        )
+        # The best annotation is the first one after sorting
+        canonical = sorted_csq[0]
 
     hgvsc = canonical.get("HGVSc", "/")
     hgvsp = canonical.get("HGVSp", "/")
     
     return {
-        "VariantKey": variant_key, "CHROM": chrom, "POS": pos, "ID": record.id, "REF": ref, "ALT": alt_allele,
+        "VariantKey": variant_key, "CHROM": chrom, "POS": pos, "REF": ref, "ALT": alt_allele,
         "Normal_DP": n_dp, "Normal_AD": f"{n_ref_reads},{n_alt_reads}", "Normal_VAF": f"{n_vaf:.4f}",
         "Tumor_DP": t_dp, "Tumor_AD": f"{t_ref_reads},{t_alt_reads}", "Tumor_VAF": f"{t_vaf:.4f}",
         "TLOD": get_safe_info_field(info, "TLOD", 0.0), "gnomAD_AF": get_safe_info_field(info, "gnomAD_AF", 0.0),
         "COSMIC_CNT": get_safe_info_field(info, "COSMIC_CNT", 0), "Gene": canonical.get("SYMBOL", "/"),
         "Transcript": canonical.get("Feature", "/"), "HGVSc": hgvsc.split(':')[-1] if ':' in hgvsc else hgvsc,
         "HGVSp": hgvsp.split(':')[-1] if ':' in hgvsp else hgvsp, "Consequence": canonical.get("Consequence", "/"),
-        "Impact": canonical.get("Impact", "/"), "coding_ratio": calculate_coding_ratio(allele_csq)
+        "Impact": canonical.get("IMPACT", "/"), 
+        "Coding_ratio": calculate_coding_ratio(allele_csq), "AA_chaged_ratio": calculate_AAchaged_ratio(allele_csq),
+        "all_csq": allele_csq
     }
 
-
-def classify_variant_(variant, rna_support, varscan_support, params):
-    """
-    Classifies a variant as Somatic, Germline, or Noise using a hierarchical,
-    depth-aware rule-set and calculates an evidence score.
-    """
-    p = {
-        'MIN_TUMOR_DP': 3, 
-        'MIN_NORMAL_DP': 8,
-        'MIN_NORMAL_VD': 3,
-        'MIN_NORMAL_VAF_GERMLINE': 0.20,
-        'MAX_GNOMAD_AF_GERMLINE': 0.01,
-        'NORMAL_VAF_FILTERS': [
-            {'max_depth': 10, 'max_vd': 1},
-            {'max_depth': 50, 'max_vd': 2},
-            {'max_depth': 100, 'max_vd': 3},
-            {'max_depth': 500, 'max_vd': 5},
-            {'max_depth': 1000, 'max_vd': 8}
-        ],
-        'MIN_TUMOR_VAF_SOMATIC': 0.01,
-        'MIN_TLOD_SOMATIC': 6.0,
-        'MAX_GNOMAD_AF_SOMATIC': 0.001,
-        'MIN_RNA_ALT_READS_SUPPORT': 3,
-        'SCORE_BASE_SOMATIC': 5,
-        'SCORE_BONUS_COSMIC': 3,
-        'SCORE_BONUS_RNA': 2,
-        'SCORE_BONUS_VARSCAN': 1,
-        'SCORE_PENALTY_GERMLINE_GNOMAD': -2
-    }
-    n_vaf, t_vaf = float(variant["Normal_VAF"]), float(variant["Tumor_VAF"])
-    n_dp, t_dp = variant["Normal_DP"], variant["Tumor_DP"]
-    n_ad, t_ad = int(variant["Normal_AD"].split(",")[1]), int(variant["Tumor_AD"].split(",")[1])
-    gnomad_af = float(variant["gnomAD_AF"]) if variant["gnomAD_AF"] != "/" else 0.0
-    tlod = float(variant["TLOD"])
-    cosmic_cnt = int(variant["COSMIC_CNT"])
-    rna_alt_reads = rna_support.get('alt_reads', 0)
-    details, score = [], 0
-
-    if n_vaf >= p['MIN_NORMAL_VAF_GERMLINE'] and n_dp >= p['MIN_NORMAL_DP']:
-        details.append(f"High_Normal_VAF({n_vaf:.2f})")
-        if gnomad_af > p['MAX_GNOMAD_AF_GERMLINE']:
-            details.append(f"Common_gnomAD_AF({gnomad_af:.4f})")
-            score += p['SCORE_PENALTY_GERMLINE_GNOMAD']
-        return "Germline", score, "; ".join(details)
-
-    is_somatic_candidate = True
-    reasons_for_failure = []
-    
-    pass_normal_vaf_check = False
-    for rule in p['NORMAL_VAF_FILTERS']:
-        if n_dp <= rule['max_depth']:
-            if n_vd <= rule['max_vd']:
-                pass_normal_vaf_check = True
-            details.append(f"N_Filter(DP<={rule['max_depth']},VD<={rule['max_vd']})")
-            break
-    if not pass_normal_vaf_check:
-        is_somatic_candidate = False
-        reasons_for_failure.append(f"Fail_N_VAF({n_vaf:.2f})")
-
-
-    if n_vd == 0:
-        if t_vaf < p['MIN_TUMOR_VAF_SOMATIC']:
-            if t_vd < p['MIN_TUMOR_DP']*2:
-                is_somatic_candidate = False
-                reasons_for_failure.append("filter1")
-        elif t_vaf < p['MIN_TUMOR_VAF_SOMATIC']*2: ##这里需要两倍VAF
-            if t_vd < p['MIN_TUMOR_DP']:
-                is_somatic_candidate = False
-                reasons_for_failure.append("filter2")
-    elif n_vd <= p['MIN_NORMAL_VD']: ## 0<n_vd<3
-        if t_vaf < p['MIN_TUMOR_VAF_SOMATIC']:
-            if t_vd < p['MIN_TUMOR_DP']*2 or tlod < p['MIN_TLOD_SOMATIC']:
-                is_somatic_candidate = False
-                reasons_for_failure.append("filter3")
-        elif t_vaf < p['MIN_TUMOR_VAF_SOMATIC']*2: ##这里需要两倍VAF
-            if t_vd < p['MIN_TUMOR_DP'] or tlod < p['MIN_TLOD_SOMATIC']:
-                is_somatic_candidate = False 
-                reasons_for_failure.append("filter4")
-    elif n_vd >= p['MIN_NORMAL_VD']: ## 0<n_vd<3
-        if t_vaf < p['MIN_TUMOR_VAF_SOMATIC']*2:
-            if t_vd < p['MIN_TUMOR_DP']*3 or tlod < p['MIN_TLOD_SOMATIC']*10:
-                is_somatic_candidate = False
-                reasons_for_failure.append("filter5")
-        elif t_vaf < p['MIN_TUMOR_VAF_SOMATIC']*3: ##这里需要两倍VAF
-            if t_vd < p['MIN_TUMOR_DP']*3 or tlod < p['MIN_TLOD_SOMATIC']*20:
-                is_somatic_candidate = False
-                reasons_for_failure.append("filter6")      
-            
-    if is_somatic_candidate:
-        status = "Somatic"
-        score += p['SCORE_BASE_SOMATIC']
-        if not details: details.append("Pass_Core_Filters")
-        if cosmic_cnt > 0:
-            details.append(f"COSMIC(x{cosmic_cnt})")
-            score += p['SCORE_BONUS_COSMIC']
-        if rna_alt_reads >= p['MIN_RNA_ALT_READS_SUPPORT']:
-            details.append(f"RNA_Support({rna_alt_reads})")
-            score += p['SCORE_BONUS_RNA']
-        if varscan_support:
-            details.append("VarScan_Support")
-            score += p['SCORE_BONUS_VARSCAN']
-        return status, score, "; ".join(details)
-    else:
-        return "Noise", -1, "; ".join(reasons_for_failure)
-
-def classify_variant(variant, rna_support, varscan_support, params):
+def classify_variant_(variant, median_T_dp, median_N_dp, params):
     """
     Classifies a variant as Somatic, Germline, or Noise using a hierarchical,
     depth-aware rule-set based on normal sample variant depth (VD).
     """
     # --- Classification Parameters (Easy to edit) ---
     p = {
+        'median_dp_ratio':0.05,
+        'median_dp_threshold': 25,
+        
         'MIN_TUMOR_DP': 3, #
         'MIN_NORMAL_DP_OVERALL': 8,
         'MIN_NORMAL_VD_LOW_THRESHOLD': 3, # 您代码中的 n_vd <= 3 的阈值
@@ -290,7 +319,7 @@ def classify_variant(variant, rna_support, varscan_support, params):
         'MIN_TUMOR_VAF_SOMATIC': 0.01, # 您代码中的基准VAF
         'MIN_TLOD_SOMATIC': 6.0,
         'MAX_GNOMAD_AF_SOMATIC': 0.001,
-        'MIN_RNA_ALT_READS_SUPPORT': 3,
+        'MIN_RNA_READS_SUPPORT': 1,
         'SCORE_BASE_SOMATIC': 5,
         'SCORE_BONUS_COSMIC': 3,
         'SCORE_BONUS_RNA': 2,
@@ -307,7 +336,8 @@ def classify_variant(variant, rna_support, varscan_support, params):
     gnomad_af = float(variant["gnomAD_AF"]) if variant["gnomAD_AF"] != "/" else 0.0
     tlod = float(variant["TLOD"])
     cosmic_cnt = int(variant["COSMIC_CNT"])
-    rna_alt_reads = rna_support.get('alt_reads', 0)
+    rna_support_reads = int(variant["RNA_Support_Reads"])
+    varscan_support = variant["VarScan_Support"]
     
     details, score = [], 0
 
@@ -381,8 +411,8 @@ def classify_variant(variant, rna_support, varscan_support, params):
         if cosmic_cnt > 0:
             details.append(f"COSMIC(x{cosmic_cnt})")
             score += p['SCORE_BONUS_COSMIC']
-        if rna_alt_reads >= p['MIN_RNA_ALT_READS_SUPPORT']:
-            details.append(f"RNA_Support({rna_alt_reads})")
+        if rna_support_reads >= p['MIN_RNA_READS_SUPPORT']:
+            details.append(f"RNA_Support({rna_support_reads})")
             score += p['SCORE_BONUS_RNA']
         if varscan_support:
             details.append("VarScan_Support")
@@ -391,6 +421,92 @@ def classify_variant(variant, rna_support, varscan_support, params):
     else:
         # If it failed any check, it's Noise. The reasons are already collected.
         return "Noise", -1, "; ".join(reasons_for_failure)
+
+def classify_variant_new(variant, params):
+    """
+    根据思维导图中的规则对变异进行分类 (增加了RNA捞回逻辑并重构了代码)。
+    
+    返回:
+        tuple: (primary_status, sub_status, evidence_details)
+    """
+    # --- 参数提取 ---
+    p = params
+
+    # --- 数据提取 ---
+    n_vaf, t_vaf = float(variant["Normal_VAF"]), float(variant["Tumor_VAF"])
+    n_dp, t_dp = variant["Normal_DP"], variant["Tumor_DP"]
+    n_vd = int(variant["Normal_AD"].split(",")[1])
+    t_vd = int(variant["Tumor_AD"].split(",")[1])
+    gnomad_af = float(variant["gnomAD_AF"]) if variant["gnomAD_AF"] != "/" else 0.0
+    tlod = float(variant["TLOD"])
+    consequences = variant.get("Consequence", "").split('&')
+    rna_support_reads = int(variant.get("RNA_Support_Reads",0))
+    
+    details = []
+
+    # --- 分类逻辑 (最终版) ---
+
+    # === 规则 1: 优先判断明确的 Germline/LOH 信号 ===
+    if n_vaf >= p.get('min_normal_vaf_germline', 0.18) and n_dp >= p.get('min_normal_dp_germline', 10):
+        details.append(f"Germline_Signal(N_VAF={n_vaf:.2f}, N_DP={n_dp})")
+        
+        if (0.3 <= n_vaf <= 0.7) and (t_vaf > 0.9 or t_vaf < 0.1):
+            primary_status = "LOH"
+            details.append(f"LOH_Shift(T_VAF={t_vaf:.2f})")
+        else:
+            primary_status = "Germline"
+            
+        # 调用辅助函数获取子状态
+        sub_status = get_amino_acid_sub_status(consequences)
+        return primary_status, sub_status, "; ".join(details)
+
+    # === 规则 2: 噪音 (Noise) 判定与RNA捞回 ===
+    is_noise = False
+    noise_reasons = []
+    
+    if t_vd < p.get('min_tumor_vd_somatic', 3):
+        is_noise = True; noise_reasons.append(f"Low_T_VD({t_vd})")
+    if t_vaf < p.get('min_tumor_vaf_somatic', 0.02):
+        is_noise = True; noise_reasons.append(f"Low_T_VAF({t_vaf:.2f})")
+    if n_vd > p.get('max_normal_vd_somatic', 3):
+        is_noise = True; noise_reasons.append(f"High_N_VD_Contamination({n_vd})")
+    if tlod < p.get('min_tlod_somatic', 6.0):
+        is_noise = True; noise_reasons.append(f"Low_TLOD({tlod})")
+    if gnomad_af > p.get('max_gnomad_af_somatic', 0.001):
+        is_noise = True; noise_reasons.append(f"High_gnomAD_AF({gnomad_af:.4f})")
+        
+    # RNA捞回
+    if is_noise:
+        # 检查是否有足够的RNA证据来“捞回”这个变异
+        if rna_support_reads >= p.get('min_rna_reads_for_rescue', 2):
+            details.append(f"Rescued_from_Noise(RNA_Reads={rna_support_reads})")
+            # 在捞回后，重新进行简化的 Germline vs Somatic 判断
+            # 这里我们使用一个稍微宽松的标准来判断是否是Germline，因为它最初信号不强
+            # 例如，只要n_vaf > 0.1 就可以认为是Germline的迹象
+            if n_vaf >= p.get('min_rescue_n_vaf_germline', 0.1):
+                primary_status = "Germline"
+                details.append("Classified_as_Germline_Post_Rescue")
+            else:
+                primary_status = "Somatic"
+                details.append("Classified_as_Somatic_Post_Rescue")
+            
+            sub_status = get_amino_acid_sub_status(consequences)
+            return primary_status, sub_status, "; ".join(details)
+            
+        else:
+            # 如果没有足够的RNA证据，则确定为Noise
+            return "Noise", None, "; ".join(noise_reasons)
+
+    # === 规则 3: 如果不是Germline也不是Noise，则认为是Somatic ===
+    # 这个代码块现在会处理“原生Somatic”和“被RNA捞回的Somatic”
+    primary_status = "Somatic"
+    if not details: # 如果不是被捞回的，就加上默认的通过信息
+        details.append("Pass_Somatic_Filters")
+    
+    # 调用辅助函数获取子状态
+    sub_status = get_amino_acid_sub_status(consequences)
+            
+    return primary_status, sub_status, "; ".join(details)
 
 def find_nearby_germline_exon_aware(somatic_row, germline_df, ensembl_data):
     """Finds germline variants within 54 exonic bp of a somatic variant."""
@@ -411,125 +527,315 @@ def find_nearby_germline_exon_aware(somatic_row, germline_df, ensembl_data):
         except Exception: continue
     return nearby_germline
 
-
-def main():
-    config = get_args()
-    log_file = config.log[0] if config.log else None
-    log_params = {"level": logging.INFO, "format": "%(asctime)s - %(levelname)s - %(message)s", "force": True}
-    if log_file: log_params["filename"] = log_file
-    else: log_params["stream"] = sys.stdout
-    logging.basicConfig(**log_params)
-
-    somatic_vcf, varscan_vcf = config.input['somatic_vcf'], config.input['varscan_vcf']
-    rna_counts, cancer_genes_file = config.input['rna_counts_tumor'], config.input['cancer_genes']
-    gtf, fasta = config.input['gtf'], config.input['fasta']
-    output_xlsx, sample_id, tiering_params = config.output['xlsx_report'], config.params['sample_id'], config.params['somatic_tiering_params']
-    
-    logging.info("Initializing pyensembl...")
-    pyensembl_cache = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "resources", "pyensembl_cache")
-    logging.info(f"Setting pyensembl cache directory to: {pyensembl_cache}")
-    os.makedirs(pyensembl_cache, exist_ok=True)
-    os.environ['PYENSEBL_CACHE_DIR'] = pyensembl_cache
-    try:
-        ensembl_data = pyensembl.Genome(reference_name='GRCh38_local', annotation_name='gencode_local', gtf_path_or_url=gtf)
-        ensembl_data.index(); logging.info("pyensembl initialized successfully.")
-    except Exception as e:
-        logging.error(f"Failed to initialize pyensembl. Exon-aware search will be skipped. Error: {e}")
-        ensembl_data = None
-
+def load_auxiliary_data(config):
+    """加载所有辅助数据文件。"""
     logging.info("Loading auxiliary data...")
-    cancer_genes = set(line.strip() for line in open(cancer_genes_file))
-    varscan_variants = set()
-    if varscan_vcf:
-        with pysam.VariantFile(varscan_vcf) as vcf:
-            for r in vcf: varscan_variants.add(f"{r.chrom}-{r.pos}-{r.ref}-{r.alts[0]}")
-    rna_support = {f"{r['contig']}-{r['position']}-{r['refAllele']}-{r['altAllele']}": {'alt_reads': r['altCount']} for _, r in pd.read_csv(rna_counts, sep='\t').iterrows()}
+    varscan_vcf_path = config.input.get('varscan_vcf')
+    rna_counts_path = config.input['rna_counts_tumor']
 
+    varscan_variants = set()
+    if varscan_vcf_path:
+        with pysam.VariantFile(varscan_vcf_path) as vcf:
+            for r in vcf:
+                varscan_variants.add(f"{r.chrom}-{r.pos}-{r.ref}-{r.alts[0]}")
+    
+    rna_support_df = pd.read_csv(rna_counts_path, sep='\t')
+    rna_support = {
+        f"{r['contig']}-{r['position']}-{r['refAllele']}-{r['altAllele']}": r['altCount']
+        for _, r in rna_support_df.iterrows()
+    }
+    
+    return varscan_variants, rna_support
+
+
+def parse_and_classify_variants(config, varscan_variants, rna_support):
+    """解析VCF，添加辅助信息，并对变异进行分类。"""
     logging.info("Parsing and classifying variants from primary VCF...")
+    somatic_vcf_path = config.input['somatic_vcf']
+    sample_id = config.params['sample_id']
+    tiering_params = config.params['somatic_tiering_params']
+
     all_variants = []
-    with pysam.VariantFile(somatic_vcf) as vcf:
+    with pysam.VariantFile(somatic_vcf_path) as vcf:
         csq_header = get_csq_header(vcf)
         for record in vcf:
             for i in range(len(record.alts)):
                 try:
                     parsed = parse_vcf_record(record, i, csq_header, sample_id)
                     all_variants.append(parsed)
-                except Exception as e: logging.warning(f"Could not parse record {record.chrom}:{record.pos}: {e}")
+                except Exception as e:
+                    logging.warning(f"Could not parse record {record.chrom}:{record.pos}: {e}")
+    
     if not all_variants:
-        logging.warning("No variants found. Creating empty report."); Workbook().save(output_xlsx); return
-        
+        logging.warning("No variants found in VCF.")
+        return pd.DataFrame()
+
     df = pd.DataFrame(all_variants)
-    df["VarScan_Support"] = df["VariantKey"].isin(varscan_variants) if varscan_vcf else False
-    classification_results = df.apply(lambda r: classify_variant(r, rna_support.get(r["VariantKey"], {}), r["VarScan_Support"], tiering_params), axis=1)
-    df[["Somatic_Status", "Evidence_Score", "Evidence_Details"]] = pd.DataFrame(classification_results.tolist(), index=df.index)
+    df["VarScan_Support"] = df["VariantKey"].isin(varscan_variants)
+    df['RNA_Support_Reads'] = df['VariantKey'].map(rna_support).fillna(0).astype(int)
 
-    # --- MODIFIED: New report generation logic starts here ---
-    logging.info("Constructing final report based on new logic...")
-    somatic_df = df[df["Somatic_Status"] == "Somatic"].copy()
-    noise_df = df[df["Somatic_Status"] == "Noise"].copy()
-    germline_df = df[df["Somatic_Status"] == "Germline"].copy()
+    classification_results = df.apply(
+        lambda r: classify_variant_new(r, tiering_params), 
+        axis=1
+    )
+    df[["Primary_Status", "Sub_Status", "Evidence_Details"]] = pd.DataFrame(
+        classification_results.tolist(), index=df.index
+    )
     
-    report_rows = []
+    return df
 
-    # Process Somatic events
-    for _, somatic_row in somatic_df.iterrows():
-        somatic_event = somatic_row.to_dict()
-        # The "one-vote veto" logic for Manual_Select
-        is_protein_affecting = somatic_event.get("HGVSp", "/") not in ["/", ""]
-        somatic_event["Manual_Select"] = "yes" if is_protein_affecting else "no"
-        report_rows.append(somatic_event)
+def parse_hgvsp_for_aa_pos(hgvsp_str):
+    """从HGVSp字符串中解析出氨基酸位置。例如 'p.Val600Glu' -> 600"""
+    if not isinstance(hgvsp_str, str) or not hgvsp_str.startswith('p.'):
+        return None
+    match = re.search(r'p\.[A-Z][a-z]{2}(\d+)', hgvsp_str)
+    if match:
+        return int(match.group(1))
+    return None
+
+def find_companion_germline_map(df):
+    """
+    使用稳健的蛋白质感知方法，查找与Somatic变异相邻的Germline变异。
+    逻辑更新：不再只取最近的一个，而是取18aa范围内所有的Somatic，
+    以便在计算Manual_Select时，只要周围有一个高质量Somatic，该Germline就能被选中。
+    """
+    logging.info("Finding nearby germline variants using a robust protein-aware method...")
+    
+    protein_map_list = []
+    # 筛选出包含有效 'all_csq' 列表的行
+    valid_rows = df[df['all_csq'].apply(lambda x: isinstance(x, list) and len(x) > 0)]
+    
+    for _, row in valid_rows.iterrows():
+        if pd.isna(row.get('Primary_Status')): continue
+
+        for csq in row['all_csq']:
+            hgvsp = csq.get('HGVSp')
+            if hgvsp and ':' in hgvsp:
+                protein_id = hgvsp.split(':')[0]
+                aa_pos = parse_hgvsp_for_aa_pos(hgvsp.split(':')[1])
+                if protein_id and aa_pos is not None:
+                    protein_map_list.append({
+                        'VariantKey': row['VariantKey'],
+                        'Primary_Status': row['Primary_Status'],
+                        'Sub_Status': row['Sub_Status'],
+                        'protein_id': protein_id,
+                        'aa_pos': aa_pos
+                    })
+
+    if not protein_map_list:
+        return {}
+
+    protein_map_df = pd.DataFrame(protein_map_list)
+    
+    # 1. 筛选 Somatic：必须改变氨基酸
+    somatic_map = protein_map_df[
+        (protein_map_df['Primary_Status'] == 'Somatic') & 
+        (protein_map_df['Sub_Status'] != 'No_AA_Altered')
+    ]
+
+    # 2. 筛选 Germline：必须改变氨基酸
+    germline_map = protein_map_df[
+        (protein_map_df['Primary_Status'] == 'Germline') & 
+        (protein_map_df['Sub_Status'] != 'No_AA_Altered')
+    ]
+
+    if somatic_map.empty or germline_map.empty:
+        return {}
         
-        if ensembl_data:
-            nearby_germlines = find_nearby_germline_exon_aware(somatic_row, germline_df, ensembl_data)
-            for germline_variant in nearby_germlines:
-                germline_variant["Somatic_Status"] = "Nearby Germline"
-                # Inherit the 'yes'/'no' from the parent somatic event
-                germline_variant["Manual_Select"] = somatic_event["Manual_Select"]
-                report_rows.append(germline_variant)
+    merged = pd.merge(somatic_map, germline_map, on='protein_id', suffixes=('_somatic', '_germline'))
+    merged['distance'] = abs(merged['aa_pos_somatic'] - merged['aa_pos_germline'])
+    
+    # === 核心修改点 ===
+    # 保留所有距离 <= 18 的组合，而不是只保留最近的一个
+    companions = merged[merged['distance'] <= 18]
+    
+    if companions.empty:
+        return {}
 
-    # Process Noise events
-    for _, noise_row in noise_df.iterrows():
-        noise_event = noise_row.to_dict()
-        noise_event["Manual_Select"] = "no"
-        report_rows.append(noise_event)
+    # 聚合：一个 Germline 可能对应多个 Somatic
+    companion_dict = defaultdict(set)
+    for _, row in companions.iterrows():
+        g_key = row['VariantKey_germline']
+        s_key = row['VariantKey_somatic']
+        companion_dict[g_key].add(s_key)
+    
+    # 转换为列表返回
+    result_map = {k: list(v) for k, v in companion_dict.items()}
+
+    logging.info(f"Found {len(result_map)} germline variants paired with somatic events.")
+    return result_map
+
+
+def generate_reports(df, companion_germline_map, config):
+    """根据分类结果和伴侣映射，生成两个Excel报告。"""
+    logging.info("Generating final Excel reports...")
+    output_filtered_xlsx = config.output['xlsx_report_filter']
+    output_neopeptides_xlsx = config.output['xlsx_report_Somatic']
+
+    # === 定义浅黄色样式 (Light Yellow) ===
+    # FFF2CC 是 Excel 中标准的 "浅黄色 40%"，视觉效果比较柔和
+    germline_highlight_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+    
+    # === 1. 初始化新列 ===
+    df['Manual_Select'] = 'no'
+    df['Companion_To'] = '/'  # 新增列：用于标记Germline对应的Somatic Key
+
+    # === 2. 处理 Somatic 的 Manual_Select ===
+    # 规则：Somatic 且 RNA_Support_Reads > 0 -> yes
+    somatic_yes_mask = (df['Primary_Status'] == 'Somatic') & (df['RNA_Support_Reads'] > 0)
+    df.loc[somatic_yes_mask, 'Manual_Select'] = 'yes'
+    
+    # 创建一个快速查询 Somatic Manual_Select 状态的字典
+    # Key: VariantKey, Value: 'yes'/'no'
+    somatic_manual_status_map = df[df['Primary_Status'] == 'Somatic'].set_index('VariantKey')['Manual_Select'].to_dict()
+
+    # === 3. 处理 Germline 的 Manual_Select 和 Companion 信息 ===
+    # 遍历我们在 find_companion_germline_map 中生成的字典
+    for germline_key, somatic_partners in companion_germline_map.items():
+        # 找到对应的 Germline 行索引
+        germline_idx = df[df['VariantKey'] == germline_key].index
         
-        if ensembl_data:
-            nearby_germlines = find_nearby_germline_exon_aware(noise_row, germline_df, ensembl_data)
-            for germline_variant in nearby_germlines:
-                germline_variant["Somatic_Status"] = "Nearby Germline"
-                germline_variant["Manual_Select"] = "no"
-                report_rows.append(germline_variant)
-
-    final_df_sheet1 = pd.DataFrame(report_rows)
-    if not final_df_sheet1.empty:
-        final_df_sheet1.sort_values(by=["CHROM", "POS"], inplace=True)
-    
-    logging.info("Generating Excel report...")
-    wb = Workbook()
-    ws1 = wb.active; ws1.title = "Somatic & Noise Event Report"
-    
-    final_cols = ["CHROM", "POS", "REF", "ALT", "Gene", "Transcript", "HGVSc", "HGVSp", "Consequence", "Impact", "coding_ratio", "Tumor_DP", "Tumor_AD", "Tumor_VAF", "Normal_DP", "Normal_AD", "Normal_VAF", "gnomAD_AF", "COSMIC_CNT", "Somatic_Status", "Manual_Select", "Evidence_Score", "Evidence_Details"]
-    ws1.append(final_cols)
-    for cell in ws1[1]: cell.font = Font(bold=True)
-    
-    somatic_fill = PatternFill("solid", fgColor="DCDCDC") # Light Grey
-
-    if not final_df_sheet1.empty:
-        for _, row in final_df_sheet1.reindex(columns=final_cols).fillna('/').iterrows():
-            ws1.append(list(row))
-            if row["Somatic_Status"] == "Somatic":
-                for cell in ws1[ws1.max_row]: cell.fill = somatic_fill
+        if not germline_idx.empty:
+            # 3.1 填充 Companion_To 列 (把列表转换成字符串，如 "key1;key2")
+            partners_str = ";".join(somatic_partners)
+            df.loc[germline_idx, 'Companion_To'] = partners_str
             
-    ws2 = wb.create_sheet(title="Pathogenic Germline Variants")
-    pathogenic_germline_df = germline_df[germline_df["Impact"] == "HIGH"].copy()
-    ws2.append(final_cols)
-    for cell in ws2[1]: cell.font = Font(bold=True)
-    if not pathogenic_germline_df.empty:
-        for r in dataframe_to_rows(pathogenic_germline_df.reindex(columns=final_cols).fillna('/'), index=False, header=False):
-            ws2.append(r)
+            # 3.2 判断 Manual_Select
+            # 规则：如果伴侣 Somatic 中有任意一个是 'yes'，则该 Germline 为 'yes'
+            is_companion_yes = False
+            for s_key in somatic_partners:
+                if somatic_manual_status_map.get(s_key) == 'yes':
+                    is_companion_yes = True
+                    break
+            
+            if is_companion_yes:
+                df.loc[germline_idx, 'Manual_Select'] = 'yes'
+
+    # === 4. 定义最终输出的列顺序 (Requirements 2 & 3) ===
+    # 加入了 'Manual_Select' 在 VarScan_Support 之前
+    # 加入了 'Companion_To' (建议放在 Gene 附近或者最后，这里放在最后方便查看)
+    final_cols = [
+        "VariantKey", "CHROM", "POS", "REF", "ALT", 
+        "Gene", "Transcript", "HGVSc", "HGVSp", 
+        "Consequence", "Impact", 
+        "Coding_ratio", "AA_chaged_ratio", "Manual_Select", # <-- 插入在这里
+        "VarScan_Support", "RNA_Support_Reads", 
+        "Normal_DP", "Normal_AD", "Normal_VAF", 
+        "Tumor_DP", "Tumor_AD", "Tumor_VAF", 
+        "TLOD", "gnomAD_AF", "COSMIC_CNT", 
+        "Primary_Status", "Sub_Status", "Evidence_Details",
+        "Companion_To" # <-- 新增列，方便溯源
+    ]
+
+    # 确保 DataFrame 只包含存在的列 (防止某些列未生成报错)
+    available_cols = [c for c in final_cols if c in df.columns]
+
+    # === 5. 分配 Sheet 逻辑 (保持之前的修正) ===
+    somatic_neopeptides_sheets = defaultdict(list)
+    filtered_variants_sheets = defaultdict(list)
+
+    # 5.1 基础分类
+    filtered_variants_sheets['Noise'] = df[df['Primary_Status'] == 'Noise']
+    filtered_variants_sheets['LOH'] = df[df['Primary_Status'] == 'LOH']
+    filtered_variants_sheets['Somatic_without_AA_altered'] = df[(df['Primary_Status'] == 'Somatic') & (df['Sub_Status'] == 'No_AA_Altered')]
+    filtered_variants_sheets['Germline_without_AA_altered'] = df[(df['Primary_Status'] == 'Germline') & (df['Sub_Status'] == 'No_AA_Altered')]
+
+    # 5.2 改变AA的 Somatic
+    somatic_aa_altered = df[(df['Primary_Status'] == 'Somatic') & (df['Sub_Status'] != 'No_AA_Altered')]
+    somatic_neopeptides_sheets['low scale variants'].append(somatic_aa_altered[somatic_aa_altered['Sub_Status'].isin(['Single_AA_Altered', 'Stop_Gained'])])
+    somatic_neopeptides_sheets['Large scale variants'].append(somatic_aa_altered[somatic_aa_altered['Sub_Status'] == 'Long_AA_Altered'])
+
+    # 5.3 改变AA的 Germline
+    germline_aa_altered = df[(df['Primary_Status'] == 'Germline') & (df['Sub_Status'] != 'No_AA_Altered')]
+    
+    isolated_germlines = []
+    for _, row in germline_aa_altered.iterrows():
+        if row['VariantKey'] in companion_germline_map:
+            # 有伴侣的 Germline
+            # 根据伴侣的类型决定去哪个 Sheet (这里取第一个伴侣的类型简单判断，或者根据优先级)
+            # 为了简单起见，我们查看其伴侣Somatic Sub_Status
+            somatic_partners = companion_germline_map[row['VariantKey']]
+            
+            # 获取伴侣的 Sub_Status (从 df 中反查)
+            # 这里取伴侣中最严重的类型决定 Sheet
+            partner_statuses = df[df['VariantKey'].isin(somatic_partners)]['Sub_Status'].tolist()
+            
+            if any(s == 'Long_AA_Altered' for s in partner_statuses):
+                target_sheet = 'Large scale variants'
+            else:
+                target_sheet = 'low scale variants'
+                
+            somatic_neopeptides_sheets[target_sheet].append(pd.DataFrame([row]))
+        else:
+            isolated_germlines.append(row)
+    
+    if isolated_germlines:
+        filtered_variants_sheets['Germline_with_AA_altered'] = pd.DataFrame(isolated_germlines)
         
-    wb.save(output_xlsx)
-    logging.info(f"Report generation complete. Saved to {output_xlsx}")
+    # === 6. 写入 Somatic 报告并应用高亮样式 ===
+    with pd.ExcelWriter(output_neopeptides_xlsx, engine='openpyxl') as writer:
+        logging.info(f"Writing to {output_neopeptides_xlsx}...")
+        for sheet_name, df_list in somatic_neopeptides_sheets.items():
+            if df_list:
+                # 准备数据：合并、去重、排序、重置索引
+                # 重置索引非常重要，这样我们遍历数据行时才能对应到 Excel 的行号
+                final_df = pd.concat(df_list).drop(columns=['all_csq'], errors='ignore')
+                final_df = final_df.reindex(columns=available_cols).fillna('/').sort_values(by=["CHROM", "POS"]).reset_index(drop=True)
+                
+                # 写入 Excel
+                final_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                
+                # 获取 Worksheet 对象
+                ws = writer.sheets[sheet_name]
+                
+                # --- 应用高亮逻辑 ---
+                # 遍历刚才写入的 DataFrame
+                for i, row in final_df.iterrows():
+                    # 判断条件：是 Germline 且 Companion_To 不为 '/'
+                    if row['Primary_Status'] == 'Germline' and row.get('Companion_To', '/') != '/':
+                        # Excel 行号 = DataFrame索引(i) + 标题行(1) + 1 = i + 2
+                        excel_row_idx = i + 2
+                        # 遍历该行的所有列进行填色
+                        for col_idx in range(1, len(available_cols) + 1):
+                            cell = ws.cell(row=excel_row_idx, column=col_idx)
+                            cell.fill = germline_highlight_fill
+
+    # === 7. 写入 Filtered 报告 (保持原样，无需高亮) ===
+    with pd.ExcelWriter(output_filtered_xlsx, engine='openpyxl') as writer:
+        logging.info(f"Writing to {output_filtered_xlsx}...")
+        for sheet_name, df_data in filtered_variants_sheets.items():
+            if not df_data.empty:
+                final_df = df_data.drop(columns=['all_csq'], errors='ignore')
+                final_df = final_df.reindex(columns=available_cols).fillna('/').sort_values(by=["CHROM", "POS"])
+                final_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+def main():
+    """主流程协调器。"""
+    config = get_args()
+    log_file = config.log[0] if config.log else None
+    log_params = {"level": logging.INFO, "format": "%(asctime)s - %(levelname)s - %(message)s", "force": True}
+    if log_file: 
+        log_params["filename"] = log_file
+    else: 
+        log_params["stream"] = sys.stdout
+    logging.basicConfig(**log_params)
+
+    # 步骤 1: 加载辅助数据
+    varscan_variants, rna_support = load_auxiliary_data(config)
+
+    # 步骤 2: 解析VCF并分类变异
+    classified_df = parse_and_classify_variants(config, varscan_variants, rna_support)
+    if classified_df.empty:
+        logging.info("No variants to process. Exiting.")
+        return
+
+    # 步骤 3: 查找伴侣Germline变异
+    companion_map = find_companion_germline_map(classified_df)
+
+    # 步骤 4: 生成报告
+    generate_reports(classified_df, companion_map, config)
+
+    logging.info("Script finished successfully.")
 
 if __name__ == "__main__":
     main()

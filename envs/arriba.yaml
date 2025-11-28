@@ -1,0 +1,24 @@
+# conda environment file for Arriba fusion detection pipeline
+# File name: arriba.yaml
+
+name: arriba
+
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+
+dependencies:
+  # Core tool for fusion detection
+  - arriba=2.5.1 # 建议指定一个稳定版本，例如 2.4.0
+
+  # Arriba's recommended aligner (and often a dependency)
+  - star>=2.7.9a
+
+  # Required for generating PDF plots of fusions
+  - ghostscript
+  - r-base
+  - r-getopt
+
+  # Note: The `gsfonts` package mentioned in some older docs is often
+  - samtools # Generally useful to have in the same environment for inspection

@@ -8,8 +8,7 @@ rule haplotype_caller:
         ref = config["reference"]["genome"],
         interval = config["reference"]["capture_kit"]
     output:
-        vcf = "dna/variants/germline/{sample}.germline.vcf.gz",
-        tbi = "dna/variants/germline/{sample}.germline.vcf.gz.tbi"
+        vcf = "dna/variants/germline/{sample}.germline.vcf.gz"
     log:
         "logs/gatk/{sample}.haplotypecaller.log"
     params:

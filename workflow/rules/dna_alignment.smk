@@ -51,7 +51,7 @@ rule mark_duplicates:
     input:
         "dna/aligned/{sample}_{sampletype}.sorted.bam"
     output:
-        bam = temp("dna/aligned/{sample}_{sampletype}.markdup.bam"),
+        bam = "dna/aligned/{sample}_{sampletype}.markdup.bam",
         #"dna/aligned/{sample}_{sampletype}.markdup.bam",
         metrics = "qc/picard/{sample}_{sampletype}.markdup_metrics.txt"
     log:
@@ -211,7 +211,7 @@ rule apply_bqsr_scatter:
         recal_table = "dna/aligned/{sample}_{sampletype}.recal_data.table"
     output:
         # **核心修复**: 每个通配符都用目录分隔
-        bam = temp("dna/aligned/temp/{sample}_{sampletype}_{chromosome}.recal.bam")
+        bam = "dna/aligned/temp/{sample}_{sampletype}_{chromosome}.recal.bam"
     log:
         "logs/gatk/{sample}_{sampletype}_{chromosome}.apply_bqsr.log"
     params:
@@ -274,7 +274,9 @@ rule coverage_stats:
         target_bed = config["reference"]["capture_kit"]
     output:
         stats = "qc/coverage/{sample}_{sampletype}.mosdepth.global.dist.txt",
-        hist = "qc/coverage/{sample}_{sampletype}.regions.bed.gz"
+        hist = "qc/coverage/{sample}_{sampletype}.regions.bed.gz",
+        summary = "qc/coverage/{sample}_{sampletype}.mosdepth.summary.txt"
+        
     log:
         "logs/bedtools/{sample}_{sampletype}.coverage.log"
     params:

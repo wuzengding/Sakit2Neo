@@ -8,7 +8,6 @@ rule split_n_cigar_reads:
     output:
         # 这是最终用于变异验证和表达定量的BAM文件
         bam = "rna/snv_validation/{sample}_{sampletype}_analysis_ready.bam",
-        bai = "rna/snv_validation/{sample}_{sampletype}_analysis_ready.bai"
     log:
         "logs/gatk/{sample}_{sampletype}_splitn.log"
     conda:
@@ -24,6 +23,7 @@ rule split_n_cigar_reads:
             -O {output.bam} \
             2> {log}
         """
+
 # ================================================
 #   使用 GATK ASEReadCounter 验证DNA层面的SNV
 # ================================================
@@ -36,10 +36,11 @@ rule rna_variant_validation:
     input:
         # 输入是经过 SplitNCigarReads 处理后的RNA BAM文件
         bam = "rna/snv_validation/{sample}_tumor_analysis_ready.bam",
-        bai = "rna/snv_validation/{sample}_tumor_analysis_ready.bai",
+        #bai = "rna/snv_validation/{sample}_tumor_analysis_ready.bai",
     
         # 输入是DNA层面检测到的、需要验证的SNV位点 (VCF格式)
-        sites_vcf = "dna/variants/mutect2/{sample}.mutect2.vcf.gz",
+        sites_vcf = "dna/variants/mutect2/{sample}.mutect2.ase_ready.vcf.gz",
+        sites_vcf_idx = "dna/variants/mutect2/{sample}.mutect2.ase_ready.vcf.gz.tbi",
         
         # ASEReadCounter 需要参考基因组
         ref = config["reference"]["genome"]

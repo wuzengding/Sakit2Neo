@@ -36,12 +36,12 @@ rule prepare_gnomad_for_annotation:
 rule annotate_gnomad:
     input:
         vcf = "dna/variants/{caller}/{sample}.{caller}.vcf.gz",
+        vcf_idx = "dna/variants/{caller}/{sample}.{caller}.vcf.gz.tbi",
         # 输入变为全局预处理好的注释文件
         annot_source = "dna/variants/annotated/gnomad.annot_source.chr.tsv.gz",
         contig_map = "dna/variants/annotated/gnomad.contig_map.txt"
     output:
         vcf = "dna/variants/annotated/{sample}.{caller}.gnomad.vcf.gz",
-        vcf_idx = "dna/variants/annotated/{sample}.{caller}.gnomad.vcf.gz.tbi"
     log:
         "logs/annotation/{caller}/{sample}.gnomad.log"
     conda:
@@ -59,9 +59,6 @@ rule annotate_gnomad:
             -O z -o {output.vcf} \
             --threads {threads} \
             > {log} 2>&1
-
-        # ================== 步骤 4: 为最终输出创建索引 ==================
-        tabix -p vcf {output.vcf} 2>> {log}
         """
 
 #rule annotate_gnomad:
@@ -170,10 +167,11 @@ rule prepare_cosmic_for_annotation:
 rule annotate_cosmic:
     input:
         vcf = "dna/variants/annotated/{sample}.{caller}.gnomad.vcf.gz",
-        cosmic = "dna/variants/annotated/cosmic.renamed.vcf.gz"
+        vcf_idx = "dna/variants/annotated/{sample}.{caller}.gnomad.vcf.gz.tbi",
+        cosmic = "dna/variants/annotated/cosmic.renamed.vcf.gz",
+        cosmic_idx = "dna/variants/annotated/cosmic.renamed.vcf.gz.tbi"
     output:
         vcf = "dna/variants/annotated/{sample}.{caller}.cosmic.vcf.gz",
-        vcf_idx = "dna/variants/annotated/{sample}.{caller}.cosmic.vcf.gz.tbi"
     log:
         "logs/annotation/{sample}.{caller}.cosmic.log"
     conda:
