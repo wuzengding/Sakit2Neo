@@ -24,6 +24,10 @@ reference:
   arriba_blacklist: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/arriba_ref/blacklist_hg38_GRCh38_v2.5.1.tsv.gz"
   arriba_known_fusions: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/arriba_ref/known_fusions_hg38_GRCh38_v2.5.1.tsv.gz"
   arriba_protein_domains: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/arriba_ref/protein_domains_hg38_GRCh38_v2.5.1.gff3"
+  AltDatabase: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/AltDatabase"
+  Gtf_Bed_File_Dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/AltDatabaseforfilter/Gtf_Bed_File_Dir_Inhouse"
+  SNAF_Control: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/AltDatabaseforfilter/SNAF_download"
+  SRA_Control: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/AltDatabaseforfilter/SRA_Control"
 # 分析模块开关
 modules:
   wes_processing: true     # WES数据预处理
@@ -34,6 +38,7 @@ modules:
   rna_snv_validation: true  # RNAseq 数据验证DNA 的SNV检测结果
   rna_expression: false    # RNA-seq表达分析
   rna_fusion: true        # RNA-seq融合分析
+  rna_splice: true        # RNA-seq可变简洁分析 
   pacbio_processing: false # PacBio数据预处理
   pacbio_isoform: false    # PacBio转录本异构体分析
   variant_annotation: true # 变异注释

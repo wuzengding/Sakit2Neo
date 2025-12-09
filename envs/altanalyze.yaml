@@ -1,0 +1,23 @@
+name: altanalyze_env
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python=2.7
+  - pip
+  - tk
+  - git
+  - numpy
+  - scipy
+  - pandas
+  - scikit-learn=0.20
+  - matplotlib=2.2
+  - pysam
+  - python-igraph
+  - pillow<7.0
+  - lxml
+  - fastcluster
+  - requests
+  - patsy
+  - networkx<2.3

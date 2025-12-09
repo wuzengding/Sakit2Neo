@@ -32,7 +32,6 @@ def get_samples_by_type(data_type, sampletype=None):
 def get_fq1(wildcards):
     print("wildcards.sample_____",wildcards.sample)
     print("wildcards.sampletype_____",wildcards.sampletype)
-    print("wildcards_____",wildcards)
     return samples[(samples['sample_id'] == wildcards.sample) & 
                   (samples['sampletype'] == wildcards.sampletype) & 
                   (samples['data_type'] == 'dna')]['fq1'].iloc[0]
@@ -155,6 +154,12 @@ def get_final_output():
             for sampletype in ['normal', 'tumor']:
                 if sampletype in samples[(samples['sample_id'] == sample) & (samples['data_type'] == 'rna')]['sampletype'].values:
                     outputs.append(f"rna/fusion/{sample}_{sampletype}.fusion.tsv")
+
+    # RNA splice 分析
+    if config["modules"]["rna_splice"] and has_rna_data():
+        for sample in set(samples['sample_id']):
+            outputs.append(f"rna/altanalyze/output/ExpressionInput/counts.original.pruned.txt")
+            outputs.append(f"rna/altanalyze/output/AltAnalyzeFilter/{sample}_Specific_High.xlsx")
     
     # PacBio分析
     if config["modules"]["pacbio_processing"] and has_pacbio_data():
@@ -207,6 +212,7 @@ include: "rules/dna_faa_generate.smk"
 include: "rules/qc.smk"
 #include: "rules/rna_expression.smk"
 include: "rules/rna_fusion.smk"
+include: "rules/rna_splice.smk"
 #include: "rules/variant_validation.smk"
 #include: "rules/pacbio_preprocessing.smk"
 #include: "rules/pacbio_isoform.smk"

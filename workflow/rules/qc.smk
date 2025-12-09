@@ -68,7 +68,8 @@ def get_qc_path_or_none(wildcards, sample_type, data_type, file_pattern):
 
 rule collect_qc_report:
     input:
-        get_qc_input_files # 动态依赖：只等待存在的文件
+        get_qc_input_files, # 动态依赖：只等待存在的文件
+        script = workflow.source_path("../scripts/generate_qc_report.py")
     output:
         xlsx = "reports/{sample}.QC.xlsx"
     log:
@@ -97,12 +98,10 @@ rule collect_qc_report:
         # --- RNA Normal Params ---
         rn_fastp   = lambda w: get_qc_path_or_none(w, 'normal', 'rna', "qc/fastp/{sample}_normal_rna_fastp.json"),
         rn_metrics = lambda w: get_qc_path_or_none(w, 'normal', 'rna', "qc/rna/{sample}_normal_RNA_metrics.txt"),
-        ## scripts
-        script = workflow.source_path("../scripts/generate_qc_report.py")
         
     shell:
         """
-        python {params.script} \\
+        python {input.script} \\
             --dna-tumor-fastp {params.dt_fastp} \\
             --dna-tumor-mosdepth {params.dt_mos} \\
             --dna-tumor-align {params.dt_align} \\
