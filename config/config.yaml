@@ -28,6 +28,8 @@ reference:
   Gtf_Bed_File_Dir: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/AltDatabaseforfilter/Gtf_Bed_File_Dir_Inhouse"
   SNAF_Control: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/AltDatabaseforfilter/SNAF_download"
   SRA_Control: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/AltDatabaseforfilter/SRA_Control"
+  ngscheckmate_bed: "/home/bioinfo/05.pipeline_dev/SakitNeo/resources/checkmate/SNP_GRCh38_hg38_wChr.bed"
+  
 # 分析模块开关
 modules:
   wes_processing: true     # WES数据预处理

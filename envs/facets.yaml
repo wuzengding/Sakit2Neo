@@ -1,0 +1,15 @@
+name: facets_env
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - snp-pileup             # 关键工具：生成 pileup csv
+  - r-base=4.2.3           # 建议固定一个版本
+  - r-facets               # Bioconda 提供的 facets 包
+  - r-pctgcdata            # facets 的依赖数据包
+  - r-argparse             # 用于 R 脚本接收 Snakemake 传参
+  - r-dplyr
+  - r-ggplot2
+  - r-stringr
+  - r-cairo                # 更好的绘图后端支持

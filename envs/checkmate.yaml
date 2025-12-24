@@ -1,0 +1,16 @@
+# envs/checkmate.yaml
+name: ngscheckmate
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - ngscheckmate
+  - samtools
+  - bcftools
+  - python=2.7
+  - r-base=4.1
+  - r-ggplot2
+  - r-pheatmap
+  - r-reshape2
+  - r-optparse

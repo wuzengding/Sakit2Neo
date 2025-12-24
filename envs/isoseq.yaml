@@ -1,0 +1,9 @@
+name: isoseq
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - isoseq3>=4.0
+  - lima=2.13
+  - minimap2=2.30
+  - samtools=1.23

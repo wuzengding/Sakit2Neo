@@ -245,7 +245,7 @@ rule Splice_Event_Specific:
     input:
         # 修改点 3: 将 input 指向上面定义的函数，而不是直接调用 expand
         Splice_Event_Inputs = get_splice_event_inputs,
-        
+    
         counts_pruned_file = "rna/altanalyze/output/ExpressionInput/counts.original.pruned.txt",
         script_path = workflow.source_path("../scripts/Splice_Event_Specific.py")
     output:

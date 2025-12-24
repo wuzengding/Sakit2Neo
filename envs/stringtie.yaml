@@ -1,0 +1,8 @@
+name: stringtie
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - stringtie=2.2.1
+  - python=3.9
+  - gffread  # 额外建议：用于处理GTF文件转换

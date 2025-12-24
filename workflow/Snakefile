@@ -166,7 +166,14 @@ def get_final_output():
         for sample_row in samples[samples['pacbio'].notna()].itertuples():
             sample = sample_row.sample_id
             sampletype = sample_row.sampletype
-            outputs.append(f"pacbio/aligned/{sample}_{sampletype}.aligned.bam")
+            outputs.append(f"pacbio/aligned/{sample}_{sampletype}.aligned.sorted.bam")
+
+    # Assembly分析
+    if config["modules"]["rna_assembly"] and has_rna_data():
+        for sample_row in samples[samples['pacbio'].notna()].itertuples():
+            sample = sample_row.sample_id
+            sampletype = sample_row.sampletype
+            outputs.append(f"rna/assembly/{sample}_{sampletype}.assembly.gtf")
     
     # CNV分析
     if config["modules"]["cnv_analysis"] and has_paired_samples():
@@ -191,9 +198,13 @@ def get_final_output():
                'rna' in samples[samples['sample_id'] == sample]['data_type'].values:
                 outputs.append(f"dna/variants/validation/{sample}.somatic.validated.vcf.gz")
 
-    # QC汇总：
+    # QC汇总:
+    outputs.append(f"dna/purity/{sample}.cnv.png")
+    outputs.append(f"dna/purity/{sample}.purity.txt")
+    outputs.append(f"qc/ngscheckmate/{sample}_all.txt")
     outputs.append(f"reports/{sample}.QC.xlsx")
 
+    
     print("outputs:",outputs)
     return outputs
 
@@ -210,15 +221,14 @@ include: "rules/rna_snv_validation.smk"
 include: "rules/dna_variant_reporting.smk"
 include: "rules/dna_faa_generate.smk"
 include: "rules/qc.smk"
-#include: "rules/rna_expression.smk"
+include: "rules/qc_checkmate.smk"
+include: "rules/qc_purity.smk"
+include: "rules/rna_assembly.smk"
 include: "rules/rna_fusion.smk"
 include: "rules/rna_splice.smk"
-#include: "rules/variant_validation.smk"
-#include: "rules/pacbio_preprocessing.smk"
-#include: "rules/pacbio_isoform.smk"
+include: "rules/pacbio_preprocessing.smk"
 #include: "rules/cnv_analysis.smk"
 #include: "rules/msi_analysis.smk"
-#include: "rules/qc.smk"
 #include: "rules/reports.smk"
 
 
