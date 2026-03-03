@@ -1,0 +1,14 @@
+# envs/fusionseeker.yaml
+name: fusionseeker
+channels:
+  - bioconda
+  - conda-forge
+  - defaults # 通常也建议包含 defaults
+dependencies:
+  - python=3.9 # 官方推荐 Python 3
+  - pysam=0.17 # 官方指定版本
+  - minimap2=2.24 # 官方指定版本
+  - samtools=1.9 # 官方指定版本
+  # bsalign 需要手动安装并添加到 PATH。在 Conda 环境中，我们通常会将其路径添加到 shell 命令中
+  # 或者将其安装到 Conda 环境路径下，然后更新 PATH。
+  # 更好的做法是在 rule 的 shell 脚本中直接处理 bsalign 的 PATH。

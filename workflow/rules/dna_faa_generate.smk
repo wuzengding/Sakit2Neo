@@ -106,7 +106,7 @@ rule whatshap_phase:
         rm {output.phased_vcf}.tmp.vcf
         """
 
-rule generate_phase_aware_neoantigen_fasta:
+rule generate_phase_aware_neoantigen_faa_from_snv:
     """
     Generates a phase-aware FASTA file of neoantigen peptides.
 
@@ -120,7 +120,7 @@ rule generate_phase_aware_neoantigen_fasta:
         phased_vcf = "dna/variants/phasing/{sample}.mutect2.phased.vcf.gz",
         #phased_vcf = "dna/variants/phasing/{sample}.mutect2.selected_for_phasing.vcf.gz",
         uniprot_fasta =  config["reference"]["uniport_fasta"],
-        script = workflow.source_path("../scripts/generate_neopeptide_fasta.py")
+        script = workflow.source_path("../scripts/generate_neopeptide_faa_from_snv.py")
     output:
         fasta = "reports/{sample}.snv.peptides.faa"
     params:
@@ -129,7 +129,7 @@ rule generate_phase_aware_neoantigen_fasta:
         window_size = 18
     
     log:
-        "logs/report/{sample}.generate_phase_aware_fasta.log"
+        "logs/report/{sample}.generate_phase_aware_faa_from_fusion.log"
     conda:
         # Reuses the same python environment as the reporting rule
         "../../envs/python.yaml"
@@ -140,10 +140,41 @@ rule generate_phase_aware_neoantigen_fasta:
     shell:
         """
         python {input.script} \\
-            --xlsx_report_Somatic {input.xlsx_report_Somatic} \\
+            --report_xlsx {input.xlsx_report_Somatic} \\
             --vcf_file {input.phased_vcf} \\
             --uniprot_fasta {input.uniprot_fasta} \\
             --output_fasta {output.fasta} \\
             --window_size {params.window_size} \\
+            > {log} 2>&1
+        """
+
+rule generate_phase_aware_neoantigen_faa_from_fusion:
+    """
+    Generates  FASTA file of neoantigen peptides from fusion.
+    """
+    input:
+        fusion_tsv = "rna/fusion/{sample}_tumor.fusion.tsv",
+        script = workflow.source_path("../scripts/generate_neopeptide_faa_from_fusion.py")
+    output:
+        fasta = "reports/{sample}.fusion.peptides.faa"
+    params:
+        # Window size for the peptide sequence around the mutation
+        # This can be moved to config.yaml if you want it to be configurable
+        window_size = 18
+    
+    log:
+        "logs/report/{sample}.generate_faa_from_fusion.log"
+    conda:
+        # Reuses the same python environment as the reporting rule
+        "../../envs/python.yaml"
+    threads: 1 
+    resources:
+        mem_mb = 4000,
+        time = 30
+    shell:
+        """
+        python {input.script} \\
+            --input {input.fusion_tsv} \\
+            --output  {output.fasta} \\
             > {log} 2>&1
         """

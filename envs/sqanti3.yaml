@@ -1,0 +1,34 @@
+name: sqanti3
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - numpy=1.23
+  - pandas
+  - scipy
+  - matplotlib
+  - seaborn
+  - psutil
+  - biopython
+  - bx-python 
+  - bcftools
+  - bedtools
+  - samtools
+  - star
+  - gffread
+  - ucsc-gtftogenepred
+  - cdna_cupcake
+  - pybedtools
+  - pysam
+  - tqdm
+  - kallisto
+  - transdecoder    # <--- 必须补上，解决 TD2 ORF 预测报错
+  - minimap2        # <--- SQANTI3 内部对比对质量进行评估时需要
+  - perl            # <--- TransDecoder 是基于 perl 的
+  - libcurl
+  - curl
+  - pip:
+    - scikit-learn

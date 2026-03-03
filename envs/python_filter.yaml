@@ -1,0 +1,15 @@
+name: python_filter
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.9
+  - pandas
+  - pybedtools
+  - bedtools
+  - curl
+  - r-base=4.2
+  - r-biocmanager
+  - r-httpuv  # recount3 依赖
+  - bioconductor-recount3 # 优先尝试 conda 安装

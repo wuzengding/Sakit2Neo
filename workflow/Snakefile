@@ -131,7 +131,7 @@ def get_final_output():
                     outputs.append(f"qc/rna/{sample}_{sampletype}_RNA_metrics.txt")
 
 
-# RNA 用于snv validation (只对TUMOR样本)
+    # RNA 用于snv validation (只对TUMOR样本)
     if config["modules"]["rna_snv_validation"] and has_rna_data():
         for sample in get_samples_by_type('rna'):
             # 直接检查该样本是否存在'tumor'类型的RNA数据
@@ -140,13 +140,27 @@ def get_final_output():
                 outputs.append(f"rna/snv_validation/{sample}_tumor_analysis_ready.bam")
                 outputs.append(f"rna/snv_validation/{sample}_tumor_mutect2_ase_counts.tsv")
 
-    # RNA表达分析
-    if config["modules"]["rna_expression"] and has_rna_data():
+    # RNA somatic calling：检查是否启用 rna_somatic 模块，是否有 RNA 数据，以及是否有配对样本
+    if config["modules"].get("rna_somatic", False) and has_rna_data():
         for sample in get_samples_by_type('rna'):
-            for sampletype in ['normal', 'tumor']:
-                if sampletype in samples[(samples['sample_id'] == sample) & (samples['data_type'] == 'rna')]['sampletype'].values:
-                    outputs.append(f"rna/expression/{sample}_{sampletype}.counts.txt")
-                    outputs.append(f"rna/expression/{sample}_{sampletype}.salmon")
+            # 检查是否有配对的 Tumor/Normal RNA 数据
+            # (注意：这会触发 rna_somatic_variants.smk 中的规则)
+            sample_data = samples[(samples['sample_id'] == sample) & (samples['data_type'] == 'rna')]
+            has_tumor = 'tumor' in sample_data['sampletype'].values
+            has_normal = 'normal' in sample_data['sampletype'].values
+            
+            if has_tumor and has_normal:
+                if config["variant_callers"]["mutect2"]:
+                    outputs.append(f"rna/variants/mutect2/{sample}.mutect2.vcf.gz")
+                    # 添加注释输出 (Annotated VCF)
+                    outputs.append(f"rna/variants/annotated/{sample}.mutect2.vep.vcf.gz")
+                
+                if config["variant_callers"]["varscan2"]:
+                    outputs.append(f"rna/variants/varscan2/{sample}.varscan2.vcf.gz")
+                    # 添加注释输出 (Annotated VCF)
+                    outputs.append(f"rna/variants/annotated/{sample}.varscan2.vep.vcf.gz")
+                outputs.append(f"reports/{sample}.rna.Filtered_variants.xlsx")
+                outputs.append(f"reports/{sample}.rna.Somatic_NeoPeptides.xlsx")
     
     # RNA融合分析
     if config["modules"]["rna_fusion"] and has_rna_data():
@@ -154,12 +168,16 @@ def get_final_output():
             for sampletype in ['normal', 'tumor']:
                 if sampletype in samples[(samples['sample_id'] == sample) & (samples['data_type'] == 'rna')]['sampletype'].values:
                     outputs.append(f"rna/fusion/{sample}_{sampletype}.fusion.tsv")
+                    #outputs.append(f"rna/fusion/{sample}_{sampletype}.fusionseeker.tsv")
+                    outputs.append(f"reports/{sample}.fusion.peptides.faa")
 
     # RNA splice 分析
     if config["modules"]["rna_splice"] and has_rna_data():
         for sample in set(samples['sample_id']):
             outputs.append(f"rna/altanalyze/output/ExpressionInput/counts.original.pruned.txt")
             outputs.append(f"rna/altanalyze/output/AltAnalyzeFilter/{sample}_Specific_High.xlsx")
+            outputs.append(f"rna/altanalyze/output/translation/{sample}_Full_Length_Protein_Peptide_seq.faa")
+            outputs.append(f"rna/altanalyze/output/translation/{sample}_Final_Neoantigen_Report.xlsx")
     
     # PacBio分析
     if config["modules"]["pacbio_processing"] and has_pacbio_data():
@@ -167,13 +185,25 @@ def get_final_output():
             sample = sample_row.sample_id
             sampletype = sample_row.sampletype
             outputs.append(f"pacbio/aligned/{sample}_{sampletype}.aligned.sorted.bam")
+            outputs.append(f"rna/splicing/{sample}_rmats/SE.MATS.JC.txt")
+            outputs.append(f"rna/splicing/{sample}_final/Full_Filter_Report.tsv")
 
     # Assembly分析
     if config["modules"]["rna_assembly"] and has_rna_data():
         for sample_row in samples[samples['pacbio'].notna()].itertuples():
             sample = sample_row.sample_id
             sampletype = sample_row.sampletype
-            outputs.append(f"rna/assembly/{sample}_{sampletype}.assembly.gtf")
+            outputs.append(f"rna/assembly/{sample}_{sampletype}.assembly.gtf.gz")
+            outputs.append(f"rna/assembly/{sample}_merged.assembly.gtf.gz")
+            outputs.append(f"rna/assembly/{sample}_merged.transcripts.fa")
+
+    # Expression分析
+    if config["modules"]["rna_expression"] and has_rna_data():
+        for sample in set(samples['sample_id']):
+            sample = sample_row.sample_id
+            sampletype = sample_row.sampletype
+            outputs.append(f"rna/expression/{sample}_{sampletype}.abundance.txt")
+            outputs.append(f"rna/expression/{sample}_gene_count_matrix.csv")
     
     # CNV分析
     if config["modules"]["cnv_analysis"] and has_paired_samples():
@@ -198,6 +228,15 @@ def get_final_output():
                'rna' in samples[samples['sample_id'] == sample]['data_type'].values:
                 outputs.append(f"dna/variants/validation/{sample}.somatic.validated.vcf.gz")
 
+    # IGV Session XMLs
+    for sample in set(samples['sample_id']):
+        # 添加 DNA XML (DNA data)
+        if 'dna' in samples[samples['sample_id'] == sample]['data_type'].values:
+            outputs.append(f"reports/igv/{sample}_DNA.xml")
+        # 添加 RNA XML (RNA data)
+        if 'rna' in samples[samples['sample_id'] == sample]['data_type'].values:
+            outputs.append(f"reports/igv/{sample}_RNA.xml")
+
     # QC汇总:
     outputs.append(f"dna/purity/{sample}.cnv.png")
     outputs.append(f"dna/purity/{sample}.purity.txt")
@@ -218,15 +257,21 @@ include: "rules/dna_structure_variants.smk"
 include: "rules/dna_annotation.smk"
 include: "rules/rna_preprocessing.smk"
 include: "rules/rna_snv_validation.smk"
+include: "rules/rna_somatic_variants.smk"
+include: "rules/rna_annotation.smk"
+include: "rules/rna_variant_reporting.smk"
 include: "rules/dna_variant_reporting.smk"
 include: "rules/dna_faa_generate.smk"
 include: "rules/qc.smk"
 include: "rules/qc_checkmate.smk"
 include: "rules/qc_purity.smk"
 include: "rules/rna_assembly.smk"
+include: "rules/rna_expression.smk"
 include: "rules/rna_fusion.smk"
 include: "rules/rna_splice.smk"
+include: "rules/igv_session.smk"
 include: "rules/pacbio_preprocessing.smk"
+include: "rules/pacbio_splicing.smk"
 #include: "rules/cnv_analysis.smk"
 #include: "rules/msi_analysis.smk"
 #include: "rules/reports.smk"

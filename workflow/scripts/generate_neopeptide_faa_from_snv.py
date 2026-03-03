@@ -212,10 +212,38 @@ def main():
 
     logging.info(f"Reading variants from {args.report_xlsx}...")
     try:
-        df = pd.read_excel(args.report_xlsx, sheet_name="Somatic & Noise Event Report")
-        selected_df = df[df['Manual_Select'].astype(str).str.lower() == 'yes'].copy()
+        # 尝试读取 Excel
+        df = pd.read_excel(args.report_xlsx, sheet_name="low scale variants")
+        
+        # --- 修复列名匹配问题 (Fix Column Mismatches) ---
+        # 去除列名可能存在的空格
+        df.columns = df.columns.str.strip()
+        
+        # 定义列名映射关系：脚本内部名称 -> Excel实际可能出现的名称
+        # 优先使用完整的名称，如果不存在则查找截断的名称
+        col_chrom = 'CHROM' if 'CHROM' in df.columns else 'CHRO'
+        col_manual = 'Manual_Select' if 'Manual_Select' in df.columns else 'Manual_Sele'
+        
+        # 关键修复：Somatic_Status 在新表格中变成了 Primary_Statu
+        if 'Somatic_Status' in df.columns:
+            col_status = 'Somatic_Status'
+        elif 'Primary_Statu' in df.columns:
+            col_status = 'Primary_Statu'
+        elif 'Primary_Status' in df.columns:
+            col_status = 'Primary_Status'
+        else:
+            raise KeyError("Could not find a column for Status (expected 'Somatic_Status' or 'Primary_Statu')")
+
+        logging.info(f"Using columns: CHROM='{col_chrom}', Manual_Select='{col_manual}', Status='{col_status}'")
+
+        # 筛选 Manual_Select 为 yes 的行
+        selected_df = df[df[col_manual].astype(str).str.lower() == 'yes'].copy()
+        
     except Exception as e:
-        logging.error(f"Failed to read Excel file: {e}"); sys.exit(1)
+        logging.error(f"Failed to read or process Excel file: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
     if selected_df.empty:
         logging.warning("No variants marked 'yes'. Output FASTA will be empty.")
@@ -223,7 +251,13 @@ def main():
     
     selected_lookup = defaultdict(list)
     for _, row in selected_df.iterrows():
-        selected_lookup[f"{row['CHROM']}:{row['POS']}"].append((row['Transcript'], row['REF'], row['ALT'], row['Somatic_Status']))
+        # 获取状态并标准化：如果表格里写的是 "Germline"，映射为脚本逻辑需要的 "Nearby Germline"
+        raw_status = row[col_status]
+        status = "Nearby Germline" if raw_status == "Germline" else raw_status
+        
+        # 使用动态识别到的列名 col_chrom
+        key = f"{row[col_chrom]}:{row['POS']}"
+        selected_lookup[key].append((row['Transcript'], row['REF'], row['ALT'], status))
 
     logging.info(f"Found {len(selected_df)} variants selected for FASTA generation.")
     logging.info(f"Extracting full annotations from {args.vcf_file}...")
@@ -235,6 +269,7 @@ def main():
             key = f"{record.chrom}:{record.pos}"
             if key in selected_lookup:
                 for transcript, ref, alt, status in selected_lookup[key]:
+                    # 只有当 REF 和 ALT 匹配时才处理
                     if record.ref == ref and alt in record.alts:
                         full_info = processor.get_full_variant_info(record, transcript, alt, csq_header, uniprot_db)
                         if full_info:
@@ -246,6 +281,7 @@ def main():
     with open(args.output_fasta, 'w') as f_out:
         for somatic_var in somatic_variants:
             try:
+                # 这一步依赖于 "Nearby Germline" 这个 key 是否存在于 all_phased_variants 中
                 haplotype_seq = processor.build_local_haplotype_sequence(somatic_var, all_phased_variants)
                 ref_window, rel_pos = processor.get_sequence_window(haplotype_seq, somatic_var["aa_pos"])
 
@@ -256,11 +292,11 @@ def main():
                     rel_pos = processor.window_size
                 
                 alt_aa = somatic_var["aa_alt"]
-                # Check for stop codon ('*')
                 if alt_aa == '*':
                     var_window = ref_window[:rel_pos]
                 else:
                     var_window = ref_window[:rel_pos] + alt_aa + ref_window[rel_pos + 1:]
+                
                 f_out.write(f">Ref|{somatic_var['transcript_id']}\n{ref_window}\n")
                 uniprot_id_str = somatic_var.get('uniprot_id', '')
                 header = (f">Var|{somatic_var['transcript_id']}|{somatic_var['gene']}|"

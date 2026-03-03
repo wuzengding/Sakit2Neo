@@ -245,7 +245,6 @@ rule Splice_Event_Specific:
     input:
         # 修改点 3: 将 input 指向上面定义的函数，而不是直接调用 expand
         Splice_Event_Inputs = get_splice_event_inputs,
-    
         counts_pruned_file = "rna/altanalyze/output/ExpressionInput/counts.original.pruned.txt",
         script_path = workflow.source_path("../scripts/Splice_Event_Specific.py")
     output:
@@ -289,4 +288,206 @@ rule Splice_Event_Specific:
 
         # 4. 简单验证
         ls -la {output.Splice_Event_Specific_Out} >> {log} 2>&1
+        """
+
+# =============================================================================
+# 自动安装外部软件 (TRANSAID & GMST)
+# =============================================================================
+# =============================================================================
+# 0. 自动安装外部软件 (TRANSAID & GMST) - wget 增强版
+# =============================================================================
+rule install_external_tools:
+    output:
+        gmst_ok = "resources/software/gmst/gmst.pl",
+        transaid_ok = "resources/software/TRANSAID/predict.py",
+        transaid_model = "resources/software/TRANSAID/model/TRANSAID_Embedding_batch4_best_model.pth"
+    params:
+        soft_dir = "resources/software"
+    conda:
+        "../../envs/translation.yaml"
+    shell:
+        """
+        mkdir -p {params.soft_dir}
+        
+        # --- 辅助函数 ---
+        function git_clone_retry {{
+            local repo=$1
+            local dir=$2
+            if [ -d "$dir" ]; then return 0; fi
+            echo "Cloning $repo..."
+            # 关闭 SSL 验证以提高国内连接成功率
+            git config --global http.sslVerify false
+            until git clone --depth 1 "$repo" "$dir"; do
+                echo "Clone failed. Retrying in 5 seconds..."
+                rm -rf "$dir"
+                sleep 5
+            done
+        }}
+
+        # 1. 安装 GeneMarkS-T (GMST)
+        if [ ! -f "{output.gmst_ok}" ]; then
+            rm -rf {params.soft_dir}/SQANTI2_tmp
+            git_clone_retry https://github.com/Magdoll/SQANTI2.git {params.soft_dir}/SQANTI2_tmp
+            
+            rm -rf {params.soft_dir}/gmst
+            mv {params.soft_dir}/SQANTI2_tmp/utilities/gmst {params.soft_dir}/
+            rm -rf {params.soft_dir}/SQANTI2_tmp
+            
+            chmod +x {params.soft_dir}/gmst/*.pl
+            chmod +x {params.soft_dir}/gmst/gmhmmp
+            chmod +x {params.soft_dir}/gmst/probuild
+        fi
+
+        # 2. 安装 TRANSAID 代码 (仅代码)
+        if [ ! -d "{params.soft_dir}/TRANSAID" ]; then
+            git_clone_retry https://github.com/wuzengding/TRANSAID.git {params.soft_dir}/TRANSAID
+        fi
+        
+        # 3. 下载 TRANSAID 模型 (使用 wget 直接下载，不依赖 git lfs)
+        # 模型文件较大，如果 git clone 下来的是指针文件(1KB左右)，或者文件不存在，则重新下载
+        MODEL_FILE="{output.transaid_model}"
+        
+        if [ ! -f "$MODEL_FILE" ] || [ $(stat -c%s "$MODEL_FILE") -lt 1000000 ]; then
+            echo "Downloading TRANSAID model via wget..."
+            # 确保目录存在
+            mkdir -p $(dirname "$MODEL_FILE")
+            
+            # 直接从 GitHub Raw/LFS 地址下载
+            # 注意：GitHub 的大文件通常可以通过 raw/main/... 获取重定向链接
+            wget -O "$MODEL_FILE" "https://github.com/wuzengding/TRANSAID/raw/main/model/TRANSAID_Embedding_batch4_best_model.pth" || \
+            wget -O "$MODEL_FILE" "https://media.githubusercontent.com/media/wuzengding/TRANSAID/main/model/TRANSAID_Embedding_batch4_best_model.pth"
+            
+            # 校验下载是否成功
+            if [ ! -f "$MODEL_FILE" ] || [ $(stat -c%s "$MODEL_FILE") -lt 1000000 ]; then
+                 echo "ERROR: Model download failed. Please download manually and place at: $MODEL_FILE"
+                 exit 1
+            fi
+        fi
+        
+        touch {output.transaid_ok}
+        """
+
+# =============================================================================
+# 1. 翻译预测 (Splice_Event_Trans)
+# =============================================================================
+rule Splice_Event_Trans:
+    input:
+        # 上一步的 Excel 结果
+        Splice_Event_Specific_Out = "rna/altanalyze/output/AltAnalyzeFilter/{sample}_Specific_High.xlsx",
+        script_path = workflow.source_path("../scripts/Splice_Event_Trans.py"),
+        # 依赖软件安装
+        gmst_tool = "resources/software/gmst/gmst.pl",
+        transaid_tool = "resources/software/TRANSAID/predict.py",
+        transaid_model = "resources/software/TRANSAID/model/TRANSAID_Embedding_batch4_best_model.pth"
+    output:
+        Splice_Event_Trans_out = "rna/altanalyze/output/translation/{sample}_Alt_Splice_full_length_trans.txt",
+        paper_bed_intersect = "rna/altanalyze/output/translation/{sample}_Alt_Splice_full_length_trans_Intersect_Paper.bed",
+        # 标记文件
+        trans_done = "rna/altanalyze/output/translation/{sample}_trans.done"
+    params:
+        outdir = "rna/altanalyze/output/translation",
+        sample_name = "{sample}",
+        
+        # 从 config.yaml 获取的引用数据路径
+        Gtf_Bed_File_Dir = config["reference"]["Gtf_Bed_File_Dir"],
+        Human_Ref = config["reference"]["genome"],  # 对应 config 中的 genome 路径
+        Paper_Bed = config["reference"]["Paper_Bed"], # 需要你在 config 中添加此项
+        
+        # 软件调用路径 (使用 install rule 下载的相对路径)
+        perl = "perl", # 使用 conda 环境中的 perl
+        python_transaid = "python", # 使用 conda 环境中的 python
+        transaid = "resources/software/TRANSAID/predict.py",
+        gmst = "resources/software/gmst/gmst.pl",
+        TransDecoder_LongOrfs = "TransDecoder.LongOrfs", # Conda 安装
+        TransDecoder_Predict = "TransDecoder.Predict",   # Conda 安装
+        model_path = "resources/software/TRANSAID/model/TRANSAID_Embedding_batch4_best_model.pth"
+    resources:
+        mem_mb = 30000
+    threads: 10
+    log:
+        "logs/altanalyze/splice_trans.{sample}.log"
+    conda:
+        "../../envs/translation.yaml"
+    shell:
+        """
+        python {input.script_path} \
+            -s {input.Splice_Event_Specific_Out} \
+            -o {params.outdir} \
+            -n {params.sample_name} \
+            -g {params.Gtf_Bed_File_Dir} \
+            -r {params.Human_Ref} \
+            -e {params.perl} \
+            -p {params.python_transaid} \
+            -t {params.transaid} \
+            -m {params.gmst} \
+            -l {params.TransDecoder_LongOrfs} \
+            -d {params.TransDecoder_Predict} \
+            -md {params.model_path} \
+            -b {params.Paper_Bed} \
+            >> {log} 2>&1
+        
+        touch {output.trans_done}
+        """
+
+# =============================================================================
+# 2. 肽段生成 (Splice_Event_Peptide)
+# =============================================================================
+rule Splice_Event_Peptide:
+    input:
+        Splice_Event_Trans_out = "rna/altanalyze/output/translation/{sample}_Alt_Splice_full_length_trans.txt",
+        paper_bed_intersect = "rna/altanalyze/output/translation/{sample}_Alt_Splice_full_length_trans_Intersect_Paper.bed",
+        trans_done = "rna/altanalyze/output/translation/{sample}_trans.done",
+        script_path = workflow.source_path("../scripts/Splice_Event_Peptide.py")
+    output:
+        Splice_Event_Peptide_out = "rna/altanalyze/output/translation/{sample}_Full_Length_Protein_Peptide_info.txt",
+        Splice_Event_Peptide_seq_out = "rna/altanalyze/output/translation/{sample}_Full_Length_Protein_Peptide_seq.faa"
+    params:
+        outdir = "rna/altanalyze/output/translation",
+        sample_name = "{sample}",
+        Gtf_Bed_File_Dir = config["reference"]["Gtf_Bed_File_Dir"],
+        Paper_Bed = config["reference"]["Paper_Bed"]
+    resources:
+        mem_mb = 10000
+    log:
+        "logs/altanalyze/splice_peptide.{sample}.log"
+    conda:
+        "../../envs/translation.yaml"
+    shell:
+        """
+        python {input.script_path} \
+            -s {input.Splice_Event_Trans_out} \
+            -o {params.outdir} \
+            -n {params.sample_name} \
+            -g {params.Gtf_Bed_File_Dir} \
+            -b {input.paper_bed_intersect} \
+            >> {log} 2>&1
+        """
+# =============================================================================
+# Rule: Splice_Event_Final_Report
+# 功能: 整合特异性分析结果与多肽预测结果，生成最终报告
+# =============================================================================
+rule Splice_Event_Final_Report:
+    input:
+        # 输入1: 特异性筛选 Excel (来自 Splice_Event_Specific)
+        specific_xlsx = "rna/altanalyze/output/AltAnalyzeFilter/{sample}_Specific_High.xlsx",
+        # 输入2: 肽段信息 (来自 Splice_Event_Peptide)
+        peptide_info = "rna/altanalyze/output/translation/{sample}_Full_Length_Protein_Peptide_info.txt",
+        script_path = workflow.source_path("../scripts/Splice_Event_Final_Report.py")
+    output:
+        final_xlsx = "rna/altanalyze/output/translation/{sample}_Final_Neoantigen_Report.xlsx"
+    params:
+        # 无需额外参数，直接传递文件路径
+    resources:
+        mem_mb = 4000
+    log:
+        "logs/altanalyze/final_report.{sample}.log"
+    conda:
+        "../../envs/translation.yaml" # 只需要 pandas 和 openpyxl
+    shell:
+        """
+        python {input.script_path} \
+            -s {input.specific_xlsx} \
+            -p {input.peptide_info} \
+            -o {output.final_xlsx} \
+            >> {log} 2>&1
         """

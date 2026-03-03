@@ -1,0 +1,26 @@
+name: translation
+channels:
+  - pytorch
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - git
+  - git-lfs           # 新增：用于下载大模型文件
+  - wget              # 新增：备用下载
+  - python=3.9
+  - pandas
+  - openpyxl
+  - biopython
+  - bedtools
+  - transdecoder>=5.5.0
+  - hmmer
+  - perl
+  - seqkit
+  - pytorch
+  - cpuonly
+  - tqdm
+  - pip
+  - pip:
+    - torchaudio
+    - torchvision

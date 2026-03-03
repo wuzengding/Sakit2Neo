@@ -9,6 +9,20 @@ def get_raw_pacbio(wildcards):
     if subset.empty: return ""
     return str(subset['pacbio'].iloc[0])
 
+def get_flnc_input(wildcards):
+    """
+    逻辑判断：
+    1. 获取原始路径
+    2. 如果路径包含 'flnc'，直接返回该路径（跳过 refine）
+    3. 如果不包含 'flnc'，返回 refine 规则的输出路径（触发 refine）
+    """
+    raw_path = get_raw_pacbio(wildcards)
+    if "flnc" in raw_path.lower():
+        # 如果原始文件已经是 flnc，直接作为比对的输入
+        return raw_path
+    else:
+        # 否则，指向 pacbio_refine 规则的输出，这将强制 Snakemake 运行 refine
+        return f"pacbio/refine/{wildcards.sample}_{wildcards.sampletype}.flnc.bam"
 
 rule pacbio_lima:
     input:
@@ -34,7 +48,8 @@ rule pacbio_lima:
 rule pacbio_refine:
     """产生 FLNC Reads (全长非嵌合)"""
     input:
-        xml = "pacbio/lima/{sample}_{sampletype}.consensusreadset.xml",
+        #xml = "pacbio/lima/{sample}_{sampletype}.consensusreadset.xml",
+        bam = get_raw_pacbio
     output:
         bam = "pacbio/refine/{sample}_{sampletype}.flnc.bam",
         report = "pacbio/refine/{sample}_{sampletype}.flnc.report.csv"
@@ -44,12 +59,16 @@ rule pacbio_refine:
     threads: 8
     conda: "../../envs/isoseq.yaml"
     shell:
-        "isoseq3 refine {input.xml} {params.primer} {output.bam} --require-polya > {log} 2>&1"
+        "isoseq3 refine {input.bam} {params.primer} {output.bam} --require-polya > {log} 2>&1"
 
 rule pacbio_align:
-    """跳过中间 Fastq 存储，直接流式比对"""
+    """
+    自动判断输入：
+    若是已有的 flnc 则直接比对；
+    若是原始数据则等待 pacbio_refine 完成后再比对。
+    """
     input:
-        bam = "pacbio/refine/{sample}_{sampletype}.flnc.bam",
+        bam = get_flnc_input,  # 使用动态判断函数
         ref = config["reference"]["genome"]
     output:
         bam = "pacbio/aligned/{sample}_{sampletype}.aligned.sorted.bam",
@@ -58,10 +77,8 @@ rule pacbio_align:
     conda: "../../envs/isoseq.yaml"
     shell:
         """
-        # 使用 samtools fastq 直接通过管道传给 minimap2
-        # minimap2 的输入端写 - 代表接收管道数据
         samtools fastq -@ 4 {input.bam} | \
-        minimap2 -ax splice:hq -uf --secondary=no -t {threads} {input.ref} - | \
-        samtools sort -@ 8 -o {output.bam} -
+        minimap2 -ax splice:hq  -s 40 -G 350k -t {threads} --MD -uf --secondary=no {input.ref} - | \
+        samtools view -hb -| samtools sort -@ 8 -o {output.bam} -
         samtools index {output.bam}
         """

@@ -40,56 +40,108 @@ rule stringtie_assemble:
             -l {wildcards.sample}_{wildcards.sampletype} > {log} 2>&1
         """
 
+# 新增 rule: 对 stringtie_assemble 的输出 GTF 进行排序、bgzip、tabix
+rule sort_bgzip_tabix_assembly_gtf:
+    """
+    对 stringtie_assemble 产生的GTF文件进行排序、bgzip压缩和tabix索引
+    """
+    input:
+        gtf = "rna/assembly/{sample}_{sampletype}.assembly.gtf"
+    output:
+        gtf_gz = "rna/assembly/{sample}_{sampletype}.assembly.gtf.gz",
+        gtf_gz_tbi = "rna/assembly/{sample}_{sampletype}.assembly.gtf.gz.tbi"
+    log: "logs/stringtie/{sample}_{sampletype}.index.log"
+    threads: 1 # bgzip和tabix通常单线程效率更高
+    conda: "../../envs/stringtie.yaml" # 使用更新后的 stringtie.yaml
+    shell:
+        """
+        # 对GTF文件进行排序 (保留注释行)
+        (grep '^#' {input.gtf}; grep -v '^#' {input.gtf} | sort -k1,1 -k4,4n) | \
+        bgzip -c > {output.gtf_gz} 2> {log} && \
+        tabix -p gff {output.gtf_gz} 2>> {log}
+        """
+
+rule get_assembly_fasta:
+    """
+    使用 gffread 提取组装转录本的序列
+    -w 输出转录本序列 FASTA
+    -g 参考基因组 FASTA
+    """
+    input:
+        # 输入现在是经过排序、bgzip和tabix处理后的 GTF.gz 文件
+        gtf = "rna/assembly/{sample}_{sampletype}.assembly.gtf.gz",
+        gtf_tbi = "rna/assembly/{sample}_{sampletype}.assembly.gtf.gz.tbi", # 确保索引文件也存在
+        ref = config["reference"]["genome"]
+    output:
+        fasta = "rna/assembly/{sample}_{sampletype}.assembly.transcripts.fa"
+    log: "logs/stringtie/{sample}_{sampletype}_get_fasta.log"
+    conda: "../../envs/stringtie.yaml"
+    shell:
+        """
+        gffread {input.gtf} \
+            -g {input.ref} \
+            -w {output.fasta} > {log} 2>&1
+        """
+
 rule stringtie_merge:
     """第二步：合并同一个患者的 Tumor 和 Normal 组装结果 (统一 ID)"""
     input:
-        t_gtf = "rna/assembly/{sample}_tumor.assembly.gtf",
-        n_gtf = "rna/assembly/{sample}_normal.assembly.gtf",
+        t_gtf = "rna/assembly/{sample}_tumor.assembly.gtf.gz",
+        t_gtf_tbi = "rna/assembly/{sample}_tumor.assembly.gtf.gz.tbi",
+        n_gtf = "rna/assembly/{sample}_normal.assembly.gtf.gz",
+        n_gtf_tbi = "rna/assembly/{sample}_normal.assembly.gtf.gz.tbi",
         ref_gtf = config["reference"]["gtf"]
     output:
-        merged_gtf = "rna/assembly/merged/{sample}_merged.gtf"
-    log: "logs/stringtie/merge_{sample}.log"
+        merged_gtf = "rna/assembly/{sample}_merged.assembly.gtf"
+    log: 
+        "logs/stringtie/merge_{sample}.log"
     threads: 4
-    conda: "../../envs/stringtie.yaml"
-    shell:
-        "stringtie --merge -G {input.ref_gtf} -o {output.merged_gtf} -p {threads} {input.t_gtf} {input.n_gtf} > {log} 2>&1"
-
-rule stringtie_quant:
-    """第三步：最终定量 (基于统一地图，使用 Illumina 数据计数)"""
-    input:
-        bam = f"rna/align/{{sample}}_{{sampletype}}/Aligned.sortedByCoord.out.bam",
-        gtf = "rna/assembly/{sample}_merged.gtf"
-    output:
-        gtf = "rna/expression/{sample}_{sampletype}.quant.gtf",
-        abund = "rna/expression/{sample}_{sampletype}.abundance.txt"
-    log: "logs/stringtie/quant_{sample}_{sampletype}.log"
-    threads: 8
-    conda: "../../envs/stringtie.yaml"
+    conda: 
+        "../../envs/stringtie.yaml"
     shell:
         """
-        stringtie {input.bam} \
-            -G {input.gtf} \
-            -e -B \
+        stringtie --merge \
+            -G {input.ref_gtf} \
+            -o {output.merged_gtf} \
             -p {threads} \
-            -o {output.gtf} \
-            -A {output.abund} > {log} 2>&1
+            <(gunzip -c {input.t_gtf}) \
+            <(gunzip -c {input.n_gtf}) \
+            > {log} 2>&1
         """
 
-rule stringtie_count_matrix:
-    """第四步：生成 Count 矩阵用于下游差异表达分析"""
+# 新增 rule: 对 stringtie_merge 的输出 GTF 进行排序、bgzip、tabix
+rule sort_bgzip_tabix_merged_gtf:
+    """
+    对 stringtie_merge 产生的合并GTF文件进行排序、bgzip压缩和tabix索引
+    """
     input:
-        t_gtf = "rna/expression/{sample}_tumor.quant.gtf",
-        n_gtf = "rna/expression/{sample}_normal.quant.gtf"
+        gtf = "rna/assembly/{sample}_merged.assembly.gtf"
     output:
-        gene_counts = "rna/expression/{sample}_gene_count_matrix.csv",
-        tx_counts = "rna/expression/{sample}_transcript_count_matrix.csv"
-    params:
-        slist = "rna/expression/{sample}_sample_list.txt"
-    log: "logs/stringtie/prepDE_{sample}.log"
+        gtf_gz = "rna/assembly/{sample}_merged.assembly.gtf.gz",
+        gtf_gz_tbi = "rna/assembly/{sample}_merged.assembly.gtf.gz.tbi"
+    log: "logs/stringtie/{sample}.merge.index.log"
+    threads: 1
+    conda: "../../envs/stringtie.yaml" # 使用更新后的 stringtie.yaml
+    shell:
+        """
+        (grep '^#' {input.gtf}; grep -v '^#' {input.gtf} | sort -k1,1 -k4,4n) | \
+        bgzip -c > {output.gtf_gz} 2> {log} && \
+        tabix -p gff {output.gtf_gz} 2>> {log}
+        """
+
+rule get_fasta_merged:
+    """提取合并（统一ID）后的转录本序列，这通常用于后续的新抗原分析"""
+    input:
+        # 输入现在是经过排序、bgzip和tabix处理后的 GTF.gz 文件
+        gtf = "rna/assembly/{sample}_merged.assembly.gtf.gz",
+        gtf_tbi = "rna/assembly/{sample}_merged.assembly.gtf.gz.tbi", # 确保索引文件也存在
+        ref = config["reference"]["genome"]
+    output:
+        fasta = "rna/assembly/{sample}_merged.transcripts.fa"
+    log: "logs/gffread/{sample}_merged_get_fasta.log" # 增加log文件，保持一致
     conda: "../../envs/stringtie.yaml"
     shell:
         """
-        echo "{wildcards.sample}_tumor {input.t_gtf}" > {params.slist}
-        echo "{wildcards.sample}_normal {input.n_gtf}" >> {params.slist}
-        prepDE.py -i {params.slist} -g {output.gene_counts} -t {output.tx_counts} > {log} 2>&1
+        zcat {input.gtf} | \
+        gffread -g {input.ref} -w {output.fasta} /dev/stdin > {log} 2>&1
         """

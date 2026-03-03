@@ -1,0 +1,12 @@
+name: isoseq_tools
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - cdna_cupcake       # Bioconda版，会自动将 collapse_isoforms_by_sam.py 加入环境变量
+  - samtools
+  - minimap2
+  - numpy=1.19
+  - pandas

@@ -75,8 +75,8 @@ def bed_file_Process(sample_data):
     #print(sample_data)
     sample_data.columns = ["chr","junction_id","support_reads","strand","pos_AltAnalyze"]
     sample_data = sample_data.copy()
-    sample_data["MergeKey"] = sample_data["junction_id"].str.split(':',expand=True)[0] + "_" + sample_data["pos_AltAnalyze"]
-    sample_data[["IntronInfo","SpliceSite"]] = sample_data["junction_id"].str.split('-',expand=True)
+    sample_data["MergeKey"] = sample_data["junction_id"].str.split(':',expand=True, n=1)[0] + "_" + sample_data["pos_AltAnalyze"]
+    sample_data[["IntronInfo","SpliceSite"]] = sample_data["junction_id"].str.split('-',expand=True, n=1)
     sample_data["SpliceSite"] = sample_data["SpliceSite"].astype(int)
     #print(sample_data)
     #print(sample_data)
@@ -173,8 +173,8 @@ def IR_bed_Filter(intron_intersect_file,exon_intersect_file,exon_intersect_merge
     #print(intron_intersect_data)
     intron_intersect_data["len"] = intron_intersect_data[2] - intron_intersect_data[1]
     intron_intersect_data["intersect_intron"] = intron_intersect_data[10]/intron_intersect_data['len']
-    intron_intersect_data["gene_Examined"] = intron_intersect_data[4].str.split(":",expand=True)[0]
-    intron_intersect_data[["gene_anno","trans_anno"]] = intron_intersect_data[8].str.split(":",expand=True)
+    intron_intersect_data["gene_Examined"] = intron_intersect_data[4].str.split(":",expand=True, n=1)[0]
+    intron_intersect_data[["gene_anno","trans_anno"]] = intron_intersect_data[8].str.split(":",expand=True, n=1)
     #print(intron_intersect_data)
     intron_intersect_data_samegene = intron_intersect_data[intron_intersect_data["gene_Examined"]==intron_intersect_data["gene_anno"]]
     intron_intersect_data_samegene = intron_intersect_data_samegene[intron_intersect_data_samegene["intersect_intron"]>0.95]
@@ -192,9 +192,9 @@ def IR_bed_Filter(intron_intersect_file,exon_intersect_file,exon_intersect_merge
     #print(exon_intersect_data)
     exon_intersect_data["len"] = exon_intersect_data[2] - exon_intersect_data[1]
     exon_intersect_data["intersect_exon"] = exon_intersect_data[10]/exon_intersect_data['len']
-    exon_intersect_data["gene_Examined"] = exon_intersect_data[4].str.split(":",expand=True)[0]
+    exon_intersect_data["gene_Examined"] = exon_intersect_data[4].str.split(":",expand=True, n=1)[0]
     try:
-        exon_intersect_data[["gene_anno","trans_anno"]] = exon_intersect_data[8].str.split(":",expand=True)
+        exon_intersect_data[["gene_anno","trans_anno"]] = exon_intersect_data[8].str.split(":",expand=True, n=1)
     except:
         exon_intersect_data[["gene_anno","trans_anno"]] = "."
     exon_intersect_data_samegene = exon_intersect_data[exon_intersect_data["gene_Examined"]==exon_intersect_data["gene_anno"]]
@@ -215,9 +215,9 @@ def IR_bed_Filter(intron_intersect_file,exon_intersect_file,exon_intersect_merge
 
     #pos1_intersect_file = f"{outdir}/05.SampleSplice_IR_pos1.intersect.bed"
     pos1_intersect_data = pd.read_csv(pos1_intersect_file,sep="\t",header=None)
-    pos1_intersect_data["gene_Examined"] = pos1_intersect_data[4].str.split(":",expand=True)[0]
+    pos1_intersect_data["gene_Examined"] = pos1_intersect_data[4].str.split(":",expand=True, n=1)[0]
     try:
-        pos1_intersect_data[["gene_anno","trans_anno"]] = pos1_intersect_data[8].str.split(":",expand=True)
+        pos1_intersect_data[["gene_anno","trans_anno"]] = pos1_intersect_data[8].str.split(":",expand=True, n=1)
     except:
         pos1_intersect_data[["gene_anno","trans_anno"]] = "."
     pos1_intersect_data_samegene = pos1_intersect_data[pos1_intersect_data["gene_Examined"]==pos1_intersect_data["gene_anno"]]
@@ -230,9 +230,9 @@ def IR_bed_Filter(intron_intersect_file,exon_intersect_file,exon_intersect_merge
 
     #pos2_intersect_file = f"{outdir}/05.SampleSplice_IR_pos2.intersect.bed"
     pos2_intersect_data = pd.read_csv(pos2_intersect_file,sep="\t",header=None)
-    pos2_intersect_data["gene_Examined"] = pos2_intersect_data[4].str.split(":",expand=True)[0]
+    pos2_intersect_data["gene_Examined"] = pos2_intersect_data[4].str.split(":",expand=True, n=1)[0]
     try:
-        pos2_intersect_data[["gene_anno","trans_anno"]] = pos2_intersect_data[8].str.split(":",expand=True)
+        pos2_intersect_data[["gene_anno","trans_anno"]] = pos2_intersect_data[8].str.split(":",expand=True, n=1)
     except:
         pos2_intersect_data[["gene_anno","trans_anno"]] = "."
     pos2_intersect_data_samegene = pos2_intersect_data[pos2_intersect_data["gene_Examined"]==pos2_intersect_data["gene_anno"]]
@@ -335,16 +335,16 @@ def Exon_Skip_bed_Filter(leftpos_intersect_file,rightpos_intersect_file,inner_ex
     outdataframe = leftpos_intersect_data[[3]]
     outdataframe = outdataframe.drop_duplicates()
     #print(leftpos_intersect_data)
-    leftpos_intersect_data["gene_Examined"] = leftpos_intersect_data[3].str.split(":",expand=True)[0]
-    leftpos_intersect_data[["gene_anno","trans_anno"]] = leftpos_intersect_data[8].str.split(":",expand=True)
+    leftpos_intersect_data["gene_Examined"] = leftpos_intersect_data[3].str.split(":",expand=True, n=1)[0]
+    leftpos_intersect_data[["gene_anno","trans_anno"]] = leftpos_intersect_data[8].str.split(":",expand=True, n=1)
     leftpos_intersect_data_samegene = leftpos_intersect_data[leftpos_intersect_data["gene_Examined"]==leftpos_intersect_data["gene_anno"]]
     leftpos_intersect_data_samegene = leftpos_intersect_data_samegene.groupby([3,10])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
     #print(leftpos_intersect_data_samegene)
     ########################################
     ########################################
     #print(leftpos_intersect_data)
-    rightpos_intersect_data["gene_Examined"] = rightpos_intersect_data[3].str.split(":",expand=True)[0]
-    rightpos_intersect_data[["gene_anno","trans_anno"]] = rightpos_intersect_data[8].str.split(":",expand=True)
+    rightpos_intersect_data["gene_Examined"] = rightpos_intersect_data[3].str.split(":",expand=True, n=1)[0]
+    rightpos_intersect_data[["gene_anno","trans_anno"]] = rightpos_intersect_data[8].str.split(":",expand=True, n=1)
     rightpos_intersect_data_samegene = rightpos_intersect_data[rightpos_intersect_data["gene_Examined"]==rightpos_intersect_data["gene_anno"]]
     rightpos_intersect_data_samegene = rightpos_intersect_data_samegene.groupby([3,10])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
     #print(rightpos_intersect_data_samegene)
@@ -353,8 +353,8 @@ def Exon_Skip_bed_Filter(leftpos_intersect_file,rightpos_intersect_file,inner_ex
     #print(inner_exon_intersect_data)
     inner_exon_intersect_data["len"] = inner_exon_intersect_data[7] - inner_exon_intersect_data[6]
     inner_exon_intersect_data["intersect_ratio"] = inner_exon_intersect_data[10] / inner_exon_intersect_data["len"]
-    inner_exon_intersect_data["gene_Examined"] = inner_exon_intersect_data[3].str.split(":",expand=True)[0]
-    inner_exon_intersect_data[["gene_anno","trans_anno"]] = inner_exon_intersect_data[8].str.split(":",expand=True)
+    inner_exon_intersect_data["gene_Examined"] = inner_exon_intersect_data[3].str.split(":",expand=True, n=1)[0]
+    inner_exon_intersect_data[["gene_anno","trans_anno"]] = inner_exon_intersect_data[8].str.split(":",expand=True, n=1)
     inner_exon_intersect_data_samegene = inner_exon_intersect_data[inner_exon_intersect_data["gene_Examined"]==inner_exon_intersect_data["gene_anno"]]
     inner_exon_intersect_data_samegene = inner_exon_intersect_data_samegene[inner_exon_intersect_data_samegene["intersect_ratio"]==1]
     inner_exon_intersect_data_samegene = inner_exon_intersect_data_samegene.groupby([3,"intersect_ratio"])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
@@ -364,8 +364,8 @@ def Exon_Skip_bed_Filter(leftpos_intersect_file,rightpos_intersect_file,inner_ex
     #print(inner_intron_intersect_data)
     inner_intron_intersect_data["len"] = inner_intron_intersect_data[7] - inner_intron_intersect_data[6]
     inner_intron_intersect_data["intersect_ratio"] = inner_intron_intersect_data[10] / inner_intron_intersect_data["len"]
-    inner_intron_intersect_data["gene_Examined"] = inner_intron_intersect_data[3].str.split(":",expand=True)[0]
-    inner_intron_intersect_data[["gene_anno","trans_anno"]] = inner_intron_intersect_data[8].str.split(":",expand=True)
+    inner_intron_intersect_data["gene_Examined"] = inner_intron_intersect_data[3].str.split(":",expand=True, n=1)[0]
+    inner_intron_intersect_data[["gene_anno","trans_anno"]] = inner_intron_intersect_data[8].str.split(":",expand=True, n=1)
     inner_intron_intersect_data_samegene = inner_intron_intersect_data[inner_intron_intersect_data["gene_Examined"]==inner_intron_intersect_data["gene_anno"]]
     inner_intron_intersect_data_samegene = inner_intron_intersect_data_samegene[inner_intron_intersect_data_samegene["intersect_ratio"]==1]
     inner_intron_intersect_data_samegene = inner_intron_intersect_data_samegene.groupby([3,"trans_anno"]).agg({"intersect_ratio":"sum"}).reset_index()
@@ -435,8 +435,8 @@ def Alt_3_bed_Filter(alt_splice_unchange,alt_splice_change,alt_splice_inner_intr
     ########################################
     ########################################
     #print(alt_splice_unchange_data)
-    alt_splice_unchange_data["gene_Examined"] = alt_splice_unchange_data[3].str.split(":",expand=True)[0]
-    alt_splice_unchange_data[["gene_anno","trans_anno"]] = alt_splice_unchange_data[8].str.split(":",expand=True)
+    alt_splice_unchange_data["gene_Examined"] = alt_splice_unchange_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_unchange_data[["gene_anno","trans_anno"]] = alt_splice_unchange_data[8].str.split(":",expand=True, n=1)
     alt_splice_unchange_data_samegene = alt_splice_unchange_data[alt_splice_unchange_data["gene_Examined"]==alt_splice_unchange_data["gene_anno"]]
     alt_splice_unchange_data_samegene = alt_splice_unchange_data_samegene.groupby([3,10])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
     #alt_splice_unchange_data_samegene = alt_splice_unchange_data_samegene.groupby([3,9])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
@@ -452,8 +452,8 @@ def Alt_3_bed_Filter(alt_splice_unchange,alt_splice_change,alt_splice_inner_intr
     #print(alt_splice_inner_intron_data)
     alt_splice_inner_intron_data["len"] = alt_splice_inner_intron_data[7] - alt_splice_inner_intron_data[6]
     alt_splice_inner_intron_data["intersect_ratio"] = alt_splice_inner_intron_data[10] / alt_splice_inner_intron_data["len"]
-    alt_splice_inner_intron_data["gene_Examined"] = alt_splice_inner_intron_data[3].str.split(":",expand=True)[0]
-    alt_splice_inner_intron_data[["gene_anno","trans_anno"]] = alt_splice_inner_intron_data[8].str.split(":",expand=True)
+    alt_splice_inner_intron_data["gene_Examined"] = alt_splice_inner_intron_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_inner_intron_data[["gene_anno","trans_anno"]] = alt_splice_inner_intron_data[8].str.split(":",expand=True, n=1)
     alt_splice_inner_intron_data_samegene = alt_splice_inner_intron_data[alt_splice_inner_intron_data["gene_Examined"]==alt_splice_inner_intron_data["gene_anno"]]
     alt_splice_inner_intron_data_samegene = alt_splice_inner_intron_data_samegene[alt_splice_inner_intron_data_samegene["intersect_ratio"]==1]
     alt_splice_inner_intron_data_samegene = alt_splice_inner_intron_data_samegene.groupby([3,"intersect_ratio"])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
@@ -468,8 +468,8 @@ def Alt_3_bed_Filter(alt_splice_unchange,alt_splice_change,alt_splice_inner_intr
     alt_splice_inner_exon_data = alt_splice_inner_exon_data[~alt_splice_inner_exon_data[8].isin(alt_splice_inner_exon_data_contain[8])]
     ################update
     alt_splice_inner_exon_data = alt_splice_inner_exon_data[alt_splice_inner_exon_data[10]>=2]
-    alt_splice_inner_exon_data["gene_Examined"] = alt_splice_inner_exon_data[3].str.split(":",expand=True)[0]
-    alt_splice_inner_exon_data[["gene_anno","trans_anno"]] = alt_splice_inner_exon_data[8].str.split(":",expand=True)
+    alt_splice_inner_exon_data["gene_Examined"] = alt_splice_inner_exon_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_inner_exon_data[["gene_anno","trans_anno"]] = alt_splice_inner_exon_data[8].str.split(":",expand=True, n=1)
     alt_splice_inner_exon_data_samegene = alt_splice_inner_exon_data[alt_splice_inner_exon_data["gene_Examined"]==alt_splice_inner_exon_data["gene_anno"]]
     alt_splice_inner_exon_data_samegene = alt_splice_inner_exon_data_samegene.groupby([3])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
     alt_splice_inner_exon_data_samegene["ExonIntersect"] = 2
@@ -543,8 +543,8 @@ def Alt_5_bed_Filter(alt_splice_unchange,alt_splice_change,alt_splice_inner_intr
     ########################################
     ########################################
     #print(alt_splice_unchange_data)
-    alt_splice_unchange_data["gene_Examined"] = alt_splice_unchange_data[3].str.split(":",expand=True)[0]
-    alt_splice_unchange_data[["gene_anno","trans_anno"]] = alt_splice_unchange_data[8].str.split(":",expand=True)
+    alt_splice_unchange_data["gene_Examined"] = alt_splice_unchange_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_unchange_data[["gene_anno","trans_anno"]] = alt_splice_unchange_data[8].str.split(":",expand=True, n=1)
     alt_splice_unchange_data_samegene = alt_splice_unchange_data[alt_splice_unchange_data["gene_Examined"]==alt_splice_unchange_data["gene_anno"]]
     alt_splice_unchange_data_samegene = alt_splice_unchange_data_samegene.groupby([3,10])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
     alt_splice_unchange_data_samegene = alt_splice_unchange_data_samegene.groupby([3,10])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
@@ -560,8 +560,8 @@ def Alt_5_bed_Filter(alt_splice_unchange,alt_splice_change,alt_splice_inner_intr
     #print(alt_splice_inner_intron_data)
     alt_splice_inner_intron_data["len"] = alt_splice_inner_intron_data[7] - alt_splice_inner_intron_data[6]
     alt_splice_inner_intron_data["intersect_ratio"] = alt_splice_inner_intron_data[10] / alt_splice_inner_intron_data["len"]
-    alt_splice_inner_intron_data["gene_Examined"] = alt_splice_inner_intron_data[3].str.split(":",expand=True)[0]
-    alt_splice_inner_intron_data[["gene_anno","trans_anno"]] = alt_splice_inner_intron_data[8].str.split(":",expand=True)
+    alt_splice_inner_intron_data["gene_Examined"] = alt_splice_inner_intron_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_inner_intron_data[["gene_anno","trans_anno"]] = alt_splice_inner_intron_data[8].str.split(":",expand=True, n=1)
     alt_splice_inner_intron_data_samegene = alt_splice_inner_intron_data[alt_splice_inner_intron_data["gene_Examined"]==alt_splice_inner_intron_data["gene_anno"]]
     alt_splice_inner_intron_data_samegene = alt_splice_inner_intron_data_samegene[alt_splice_inner_intron_data_samegene["intersect_ratio"]==1]
     alt_splice_inner_intron_data_samegene = alt_splice_inner_intron_data_samegene.groupby([3,"intersect_ratio"])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
@@ -576,8 +576,8 @@ def Alt_5_bed_Filter(alt_splice_unchange,alt_splice_change,alt_splice_inner_intr
     alt_splice_inner_exon_data = alt_splice_inner_exon_data[~alt_splice_inner_exon_data[8].isin(alt_splice_inner_exon_data_contain[8])]
     ################update
     alt_splice_inner_exon_data = alt_splice_inner_exon_data[alt_splice_inner_exon_data[10]>=2]
-    alt_splice_inner_exon_data["gene_Examined"] = alt_splice_inner_exon_data[3].str.split(":",expand=True)[0]
-    alt_splice_inner_exon_data[["gene_anno","trans_anno"]] = alt_splice_inner_exon_data[8].str.split(":",expand=True)
+    alt_splice_inner_exon_data["gene_Examined"] = alt_splice_inner_exon_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_inner_exon_data[["gene_anno","trans_anno"]] = alt_splice_inner_exon_data[8].str.split(":",expand=True, n=1)
     alt_splice_inner_exon_data_samegene = alt_splice_inner_exon_data[alt_splice_inner_exon_data["gene_Examined"]==alt_splice_inner_exon_data["gene_anno"]]
     alt_splice_inner_exon_data_samegene = alt_splice_inner_exon_data_samegene.groupby([3])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
     alt_splice_inner_exon_data_samegene["ExonIntersect"] = 2
@@ -659,20 +659,20 @@ def Alt_C_term_filter(alt_splice_unchange,alt_splice_change,alt_splice_last_exon
     #########################################################################################
     #########################################################################################
     #print(alt_splice_unchange_data)
-    alt_splice_unchange_data["gene_Examined"] = alt_splice_unchange_data[3].str.split(":",expand=True)[0]
-    alt_splice_unchange_data[["gene_anno","trans_anno"]] = alt_splice_unchange_data[8].str.split(":",expand=True)
+    alt_splice_unchange_data["gene_Examined"] = alt_splice_unchange_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_unchange_data[["gene_anno","trans_anno"]] = alt_splice_unchange_data[8].str.split(":",expand=True, n=1)
     alt_splice_unchange_data_samegene = alt_splice_unchange_data[alt_splice_unchange_data["gene_Examined"]==alt_splice_unchange_data["gene_anno"]]
     alt_splice_unchange_data_samegene = alt_splice_unchange_data_samegene.groupby([3,10])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
     #print(alt_splice_change_data)
     #########################################################################################
     #print(alt_splice_unchange_data_samegene)
     #print(alt_splice_change_data_samegene)
-    gene_last_exon_data[["gene_anno","trans"]] = gene_last_exon_data[3].str.split(":",expand=True)
+    gene_last_exon_data[["gene_anno","trans"]] = gene_last_exon_data[3].str.split(":",expand=True, n=1)
     gene_last_exon_data = gene_last_exon_data[["gene_anno",0,1,2,4]]
     gene_last_exon_data.columns = ["gene_anno","chr","start","end","strand"]
     #########################################################################################
-    alt_splice_change_data["gene_Examined"] = alt_splice_change_data[3].str.split(":",expand=True)[0]
-    alt_splice_change_data[["gene_anno","trans_anno"]] = alt_splice_change_data[8].str.split(":",expand=True)
+    alt_splice_change_data["gene_Examined"] = alt_splice_change_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_change_data[["gene_anno","trans_anno"]] = alt_splice_change_data[8].str.split(":",expand=True, n=1)
     alt_splice_change_data_samegene = alt_splice_change_data[alt_splice_change_data["gene_Examined"]==alt_splice_change_data["gene_anno"]]
     alt_splice_change_data_samegene = alt_splice_change_data_samegene.groupby([3,10])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
     #########################################################################################
@@ -682,15 +682,15 @@ def Alt_C_term_filter(alt_splice_unchange,alt_splice_change,alt_splice_last_exon
     #print(alt_splice_last_exon_data)
     alt_splice_last_exon_data["len"] = alt_splice_last_exon_data[7] - alt_splice_last_exon_data[6]
     alt_splice_last_exon_data["intersect_ratio"] = alt_splice_last_exon_data[10] / alt_splice_last_exon_data["len"]
-    alt_splice_last_exon_data["gene_Examined"] = alt_splice_last_exon_data[3].str.split(":",expand=True)[0]
-    alt_splice_last_exon_data[["gene_anno","trans_anno"]] = alt_splice_last_exon_data[8].str.split(":",expand=True)
+    alt_splice_last_exon_data["gene_Examined"] = alt_splice_last_exon_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_last_exon_data[["gene_anno","trans_anno"]] = alt_splice_last_exon_data[8].str.split(":",expand=True, n=1)
     alt_splice_last_exon_data_samegene = alt_splice_last_exon_data[alt_splice_last_exon_data["gene_Examined"]==alt_splice_last_exon_data["gene_anno"]]
     alt_splice_last_exon_data_samegene = alt_splice_last_exon_data_samegene[alt_splice_last_exon_data_samegene["intersect_ratio"]==1]
     alt_splice_last_exon_data_samegene = alt_splice_last_exon_data_samegene.groupby([3,"intersect_ratio"])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
     #########################################################################################
     #print(alt_splice_exon_data)
-    alt_splice_exon_data["gene_Examined"] = alt_splice_exon_data[3].str.split(":",expand=True)[0]
-    alt_splice_exon_data[["gene_anno","trans_anno"]] = alt_splice_exon_data[8].str.split(":",expand=True)
+    alt_splice_exon_data["gene_Examined"] = alt_splice_exon_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_exon_data[["gene_anno","trans_anno"]] = alt_splice_exon_data[8].str.split(":",expand=True, n=1)
     alt_splice_exon_data = alt_splice_exon_data[alt_splice_exon_data["gene_Examined"]==alt_splice_exon_data["gene_anno"]]
     alt_splice_exon_data = alt_splice_exon_data[alt_splice_exon_data[10]>1]
     alt_splice_exon_data = alt_splice_exon_data.groupby([3])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
@@ -706,7 +706,7 @@ def Alt_C_term_filter(alt_splice_unchange,alt_splice_change,alt_splice_last_exon
     outdataframe = pd.merge(outdataframe,alt_splice_change_data_samegene,on="Alt_Splice",how='left')
     outdataframe = pd.merge(outdataframe,alt_splice_last_exon_data_samegene,on="Alt_Splice",how='left')
     outdataframe = pd.merge(outdataframe,alt_splice_exon_data,on="Alt_Splice",how='left')
-    outdataframe["gene_anno"] = outdataframe["Alt_Splice"].str.split(":",expand=True)[0]
+    outdataframe["gene_anno"] = outdataframe["Alt_Splice"].str.split(":",expand=True, n=1)[0]
     outdataframe = pd.merge(outdataframe,gene_last_exon_data,on="gene_anno",how='left')
     outdataframe = outdataframe.fillna(0)
     outdataframe[["chr_exam","start_exam","end_exam"]] = outdataframe["pos_igv_bak"].str.split(":|-",expand=True)
@@ -799,35 +799,35 @@ def Alt_Promoter_bed_Filter(alt_splice_unchange,alt_splice_change,alt_splice_fir
     outdataframe.columns = ["Alt_Splice","pos_igv_bak"]
     #########################################################################################
     #print(alt_splice_unchange_data)
-    alt_splice_unchange_data["gene_Examined"] = alt_splice_unchange_data[3].str.split(":",expand=True)[0]
-    alt_splice_unchange_data[["gene_anno","trans_anno"]] = alt_splice_unchange_data[8].str.split(":",expand=True)
+    alt_splice_unchange_data["gene_Examined"] = alt_splice_unchange_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_unchange_data[["gene_anno","trans_anno"]] = alt_splice_unchange_data[8].str.split(":",expand=True, n=1)
     alt_splice_unchange_data_samegene = alt_splice_unchange_data[alt_splice_unchange_data["gene_Examined"]==alt_splice_unchange_data["gene_anno"]]
     alt_splice_unchange_data_samegene = alt_splice_unchange_data_samegene.groupby([3,10])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
     #print(alt_splice_change_data)
     #########################################################################################
-    alt_splice_change_data["gene_Examined"] = alt_splice_change_data[3].str.split(":",expand=True)[0]
-    alt_splice_change_data[["gene_anno","trans_anno"]] = alt_splice_change_data[8].str.split(":",expand=True)
+    alt_splice_change_data["gene_Examined"] = alt_splice_change_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_change_data[["gene_anno","trans_anno"]] = alt_splice_change_data[8].str.split(":",expand=True, n=1)
     alt_splice_change_data_samegene = alt_splice_change_data[alt_splice_change_data["gene_Examined"]==alt_splice_change_data["gene_anno"]]
     alt_splice_change_data_samegene = alt_splice_change_data_samegene.groupby([3,10])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
     #########################################################################################
     #print(alt_splice_unchange_data_samegene)
     #print(alt_splice_change_data_samegene)
-    gene_first_exon_data[["gene_anno","trans"]] = gene_first_exon_data[3].str.split(":",expand=True)
+    gene_first_exon_data[["gene_anno","trans"]] = gene_first_exon_data[3].str.split(":",expand=True, n=1)
     gene_first_exon_data = gene_first_exon_data[["gene_anno",0,1,2,4]]
     gene_first_exon_data.columns = ["gene_anno","chr","start","end","strand"]
     #########################################################################################
     #print(alt_splice_last_exon_data)
     alt_splice_first_exon_data["len"] = alt_splice_first_exon_data[7] - alt_splice_first_exon_data[6]
     alt_splice_first_exon_data["intersect_ratio"] = alt_splice_first_exon_data[10] / alt_splice_first_exon_data["len"]
-    alt_splice_first_exon_data["gene_Examined"] = alt_splice_first_exon_data[3].str.split(":",expand=True)[0]
-    alt_splice_first_exon_data[["gene_anno","trans_anno"]] = alt_splice_first_exon_data[8].str.split(":",expand=True)
+    alt_splice_first_exon_data["gene_Examined"] = alt_splice_first_exon_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_first_exon_data[["gene_anno","trans_anno"]] = alt_splice_first_exon_data[8].str.split(":",expand=True, n=1)
     alt_splice_first_exon_data_samegene = alt_splice_first_exon_data[alt_splice_first_exon_data["gene_Examined"]==alt_splice_first_exon_data["gene_anno"]]
     alt_splice_first_exon_data_samegene = alt_splice_first_exon_data_samegene[alt_splice_first_exon_data_samegene["intersect_ratio"]==1]
     alt_splice_first_exon_data_samegene = alt_splice_first_exon_data_samegene.groupby([3,"intersect_ratio"])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
     #########################################################################################
     #print(alt_splice_exon_data)
-    alt_splice_exon_data["gene_Examined"] = alt_splice_exon_data[3].str.split(":",expand=True)[0]
-    alt_splice_exon_data[["gene_anno","trans_anno"]] = alt_splice_exon_data[8].str.split(":",expand=True)
+    alt_splice_exon_data["gene_Examined"] = alt_splice_exon_data[3].str.split(":",expand=True, n=1)[0]
+    alt_splice_exon_data[["gene_anno","trans_anno"]] = alt_splice_exon_data[8].str.split(":",expand=True, n=1)
     alt_splice_exon_data = alt_splice_exon_data[alt_splice_exon_data["gene_Examined"]==alt_splice_exon_data["gene_anno"]]
     alt_splice_exon_data = alt_splice_exon_data[alt_splice_exon_data[10]>1]
     alt_splice_exon_data = alt_splice_exon_data.groupby([3])["trans_anno"].agg(lambda x: '|'.join(x)).reset_index()
@@ -842,7 +842,7 @@ def Alt_Promoter_bed_Filter(alt_splice_unchange,alt_splice_change,alt_splice_fir
     outdataframe = pd.merge(outdataframe,alt_splice_change_data_samegene,on="Alt_Splice",how='left')
     outdataframe = pd.merge(outdataframe,alt_splice_first_exon_data_samegene,on="Alt_Splice",how='left')
     outdataframe = pd.merge(outdataframe,alt_splice_exon_data,on="Alt_Splice",how='left')
-    outdataframe["gene_anno"] = outdataframe["Alt_Splice"].str.split(":",expand=True)[0]
+    outdataframe["gene_anno"] = outdataframe["Alt_Splice"].str.split(":",expand=True, n=1)[0]
     outdataframe = pd.merge(outdataframe,gene_first_exon_data,on="gene_anno",how='left')
     outdataframe = outdataframe.fillna(0)
     outdataframe[["chr_exam","start_exam","end_exam"]] = outdataframe["pos_igv_bak"].str.split(":|-",expand=True)
@@ -917,7 +917,7 @@ def Trans_Splicing_bed_Filter(pos3_intersect_file,pos5_intersect_file):
     #print(pos3_intersect_data)
     #print(pos5_intersect_data)
     #########################################################################################
-    #pos3_intersect_data["gene_Examined"] = pos3_intersect_data[3].str.split(":",expand=True)[0]
+    #pos3_intersect_data["gene_Examined"] = pos3_intersect_data[3].str.split(":",expand=True, n=1)[0]
     pos3_intersect_data = pos3_intersect_data.groupby([3])[8].agg(lambda x: '|'.join(x)).reset_index()
     pos5_intersect_data = pos5_intersect_data.groupby([3])[8].agg(lambda x: '|'.join(x)).reset_index()
     intersect_data_merge = pd.merge(pos3_intersect_data,pos5_intersect_data,on=3,how='left')
@@ -974,10 +974,10 @@ if __name__ == "__main__":
     ############################################################################################
     ############################################################################################
     ####内含子保留注释信息提取
-    EventAnnotation_IR = EventAnnotation[EventAnnotation["EventAnnotation"] == "intron-retention"]
+    EventAnnotation_IR = EventAnnotation[EventAnnotation["EventAnnotation"] == "intron-retention"].copy()
     #EventAnnotation_IR = EventAnnotation_IR.fillna(0)
     #EventAnnotation_IR = EventAnnotation_IR[EventAnnotation_IR[f"{args.SampleID}.Aligned.sortedByCoord.out.bed"]>0]
-    EventAnnotation_IR["MergeKey"] = EventAnnotation_IR["Alt_Splice"].str.split(':',expand=True)[0] + "_" + EventAnnotation_IR["pos_Examined"]
+    EventAnnotation_IR["MergeKey"] = EventAnnotation_IR["Alt_Splice"].str.split(':',expand=True, n=1)[0] + "_" + EventAnnotation_IR["pos_Examined"]
     ############################################################################################
     ############################################################################################
     ####从intronJunction的bed文件中提取内含子保留事件的信息，用于回溯到底哪两个断点为一个完整的内含子保留事件
