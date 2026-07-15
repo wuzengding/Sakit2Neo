@@ -33,22 +33,20 @@ rule filter_vcf_for_phasing:
     """
     input:
         xlsx_report_Somatic = "reports/{sample}.Somatic_NeoPeptides_manual_check.xlsx",
-        somatic_vcf = "dna/variants/annotated/{sample}.mutect2.vep.vcf.gz"
+        somatic_vcf = "dna/variants/annotated/{sample}.mutect2.vep.vcf.gz",
+        # 【修复核心】：把 script 作为依赖文件放入 input 中
+        script = workflow.source_path("../scripts/filter_vcf_from_report.py")
     output:
         filtered_vcf = "dna/variants/phasing/{sample}.mutect2.selected_for_phasing.vcf.gz",
         filtered_vcf_tbi = "dna/variants/phasing/{sample}.mutect2.selected_for_phasing.vcf.gz.tbi"
     log:
         "logs/phasing/{sample}.filter_vcf.log"
-    params:
-        # --- THE FIX: Prepare the script path here ---
-        # We use workflow.source_path to get the correct path relative to this Snakefile.
-        # This path is then safely passed to the shell block as a simple parameter.
-        script = workflow.source_path("../scripts/filter_vcf_from_report.py")
+    # 注意：这里彻底删除了 params: 块，因为不需要了
     conda:
         "../../envs/python.yaml"
     shell:
         """
-        python {params.script} \\
+        python {input.script} \\
             --xlsx_report_Somatic {input.xlsx_report_Somatic} \\
             --input_vcf {input.somatic_vcf} \\
             --output_vcf {output.filtered_vcf} \\
@@ -118,8 +116,7 @@ rule generate_phase_aware_neoantigen_faa_from_snv:
     input:
         xlsx_report_Somatic = "reports/{sample}.Somatic_NeoPeptides_manual_check.xlsx",
         phased_vcf = "dna/variants/phasing/{sample}.mutect2.phased.vcf.gz",
-        #phased_vcf = "dna/variants/phasing/{sample}.mutect2.selected_for_phasing.vcf.gz",
-        uniprot_fasta =  config["reference"]["uniport_fasta"],
+        protein_fasta = config["reference"]["protein_fasta"],
         script = workflow.source_path("../scripts/generate_neopeptide_faa_from_snv.py")
     output:
         fasta = "reports/{sample}.snv.peptides.faa"
@@ -142,7 +139,7 @@ rule generate_phase_aware_neoantigen_faa_from_snv:
         python {input.script} \\
             --report_xlsx {input.xlsx_report_Somatic} \\
             --vcf_file {input.phased_vcf} \\
-            --uniprot_fasta {input.uniprot_fasta} \\
+            --protein_fasta {input.protein_fasta} \\
             --output_fasta {output.fasta} \\
             --window_size {params.window_size} \\
             > {log} 2>&1
@@ -150,7 +147,8 @@ rule generate_phase_aware_neoantigen_faa_from_snv:
 
 rule generate_phase_aware_neoantigen_faa_from_fusion:
     """
-    Generates  FASTA file of neoantigen peptides from fusion.
+    Generates FASTA file of neoantigen peptides from Arriba fusion outputs.
+    Includes dynamic capping based on fusion quality to prevent excessive downstream prediction times.
     """
     input:
         fusion_tsv = "rna/fusion/{sample}_tumor.fusion.tsv",
@@ -158,10 +156,10 @@ rule generate_phase_aware_neoantigen_faa_from_fusion:
     output:
         fasta = "reports/{sample}.fusion.peptides.faa"
     params:
-        # Window size for the peptide sequence around the mutation
-        # This can be moved to config.yaml if you want it to be configurable
-        window_size = 18
-    
+        # 融合点两侧提取的氨基酸长度 (18 aa 会生成约 36 aa 的肽段，适合 MHC-I & II)
+        window_size = 12,
+        # 最大允许输出的变异氨基酸总长度 (控制预测软件的计算时间)
+        max_aa_len = 500 
     log:
         "logs/report/{sample}.generate_faa_from_fusion.log"
     conda:
@@ -173,8 +171,42 @@ rule generate_phase_aware_neoantigen_faa_from_fusion:
         time = 30
     shell:
         """
-        python {input.script} \\
-            --input {input.fusion_tsv} \\
-            --output  {output.fasta} \\
+        python {input.script} \
+            --input {input.fusion_tsv} \
+            --output  {output.fasta} \
+            --window_size {params.window_size} \
+            --max_aa_len {params.max_aa_len} \
             > {log} 2>&1
         """
+
+rule generate_phase_faa_from_AS:
+    """
+    Reads the manually checked AS variant report (specifically the 'Large scale variants' sheet)
+    and generates the corresponding Wildtype and Mutant FASTA/FAA sequences for downstream 
+    neoantigen prediction (e.g., pTuneos, netMHCpan).
+    """
+    input:
+        # 依赖上游人工审核完成的文件
+        manual_check_file = "reports/{sample}.Somatic_NeoPeptides_manual_check.xlsx"
+    output:
+        # 输出我们约定的 4 个文件，存放在专门的 neoantigen 目录下
+        wt_cds = "reports/{sample}.as.wildtype_cds.fasta",
+        mut_cds = "reports/{sample}.as.mutation_cds.fasta",
+        mut_prot = "reports/{sample}.as.mutation_protein.faa",
+        peptide = "reports/{sample}.as.peptide.faa"
+    params:
+        # 从全局 config 中获取所需参数
+        gtf = config["reference"]["gtf"],
+        fasta = config["reference"]["genome"]
+    log:
+        "logs/{sample}.generate_phase_faa_from_AS.log"
+    conda:
+        # 需要包含 pandas, openpyxl, pyfaidx
+        "../../envs/python.yaml" 
+    threads: 1
+    resources:
+        mem_mb = 4000,
+        time = 30
+    script:
+        # 你的 Python 脚本路径
+        "../scripts/generate_neopeptide_faa_from_AS.py"

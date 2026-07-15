@@ -31,13 +31,12 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-
-def load_uniprot_sequences(fasta_file: str) -> Dict[str, str]:
+def load_ensembl_sequences(fasta_file: str) -> Dict[str, str]:
     """
-    Parses a UniProt FASTA file and returns a dictionary mapping
-    UniProt ID (without isoform/version) to its canonical protein sequence.
+    Parses a GENCODE/Ensembl Protein FASTA file and returns a dictionary mapping
+    Transcript ID (ENST..., without version) to its canonical protein sequence.
     """
-    logging.info(f"Loading UniProt protein sequences from {fasta_file}...")
+    logging.info(f"Loading Ensembl/GENCODE protein sequences from {fasta_file}...")
     sequences = {}
     current_id = None
     current_seq = []
@@ -48,22 +47,21 @@ def load_uniprot_sequences(fasta_file: str) -> Dict[str, str]:
                 if current_id:
                     sequences[current_id] = "".join(current_seq)
                 
-                # Parse new ID: >sp|Q15111|... or >tr|A0A...|...
-                match = re.search(r'>[a-z]{2}\|([A-Z0-9]+)', line)
+                # 修复：使用更宽泛的正则，只要 Fasta 标头里包含 ENST 编号，就能抓取到
+                match = re.search(r'(ENST\d+)', line)
                 if match:
-                    #uniprot_id_full = match.group(1)
-                    #current_id = uniprot_id_full.split('-')[0] # Use base ID
-                    current_id = line.split("|")[1]
+                    current_id = match.group(1) # 获取 ENST... 不带小数点后的版本号
                     current_seq = []
                 else:
                     current_id = None
             elif current_id:
-                current_seq.append(line.strip())
+                # 剔除序列末尾可能存在的星号
+                current_seq.append(line.strip().replace('*', ''))
     
     if current_id:
         sequences[current_id] = "".join(current_seq)
         
-    logging.info(f"Loaded {len(sequences)} canonical protein sequences.")
+    logging.info(f"Loaded {len(sequences)} transcript protein sequences.")
     return sequences
 
 
@@ -94,7 +92,6 @@ class SequenceProcessor:
         match = re.match(r'([A-Z][a-z]{2})(\d+)([A-Z][a-z]{2}|Ter|\*)', mutation)
         if match:
             ref, pos, alt = match.groups()
-            # The line below is the corrected one
             return f"p.{self.amino_acid_3to1.get(ref, '?')}{pos}{'*' if alt in ['Ter', '*'] else self.amino_acid_3to1.get(alt, '?')}"
         return f"p.{mutation}"
 
@@ -121,40 +118,44 @@ class SequenceProcessor:
         end = min(len(protein_seq), pos_0based + self.window_size + 1)
         return protein_seq[start:end], pos_0based - start
 
-    def get_full_variant_info(self, vcf_record, target_transcript_id: str, target_alt: str, csq_header: List[str], uniprot_db: Dict) -> Optional[Dict]:
+    def get_full_variant_info(self, vcf_record, target_transcript_id: str, target_alt: str, csq_header: List[str], protein_db: Dict) -> Optional[Dict]:
         """
-        Extracts all details for a variant, including phase and protein sequence from UniProt DB.
+        Extracts all details for a variant, including phase, ENST protein sequence, and UniProt ID.
         """
         all_csq = [dict(zip(csq_header, e.split("|"))) for e in vcf_record.info.get("CSQ", [])]
-        target_csq = next((c for c in all_csq if c.get("Feature") == target_transcript_id and c.get("Allele") == target_alt), None)
+        
+        # 兼容转录本带不带版本号的情况
+        base_target_enst = target_transcript_id.split('.')[0]
+        
+        target_csq = None
+        for c in all_csq:
+            c_feature = c.get("Feature", "")
+            if c_feature.split('.')[0] == base_target_enst and c.get("Allele") == target_alt:
+                target_csq = c
+                break
 
         if not target_csq:
             logging.warning(f"Could not find annotation for transcript {target_transcript_id} in VCF record at {vcf_record.chrom}:{vcf_record.pos}")
             return None
 
-        # --- CORRECTED AND ROBUST UniProt ID EXTRACTION ---
-        uniprot_id = None
-        # 1. Prioritize the SWISSPROT field if it exists
-        if 'SWISSPROT' in target_csq and target_csq['SWISSPROT']:
-            uniprot_id = target_csq['SWISSPROT']
-        # 2. Fallback to TREMBL if SWISSPROT is not available
-        elif 'TREMBL' in target_csq and target_csq['TREMBL']:
-            uniprot_id = target_csq['TREMBL']
-        # 3. Last resort: regex search on other fields that VEP might use
-        else:
-            uniprot_regex = r'([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2})'
-            # Check the specific UniProt accession field VEP sometimes uses
-            if 'Uniprot_ACC' in target_csq and target_csq['Uniprot_ACC']:
-                 match = re.search(uniprot_regex, target_csq['Uniprot_ACC'])
-                 if match: uniprot_id = match.group(1)
+        # --- 核心提取 1：用 GENCODE ENST ID 去拿准确的序列 ---
+        protein_sequence = protein_db.get(base_target_enst, "")
+        if not protein_sequence:
+            logging.warning(f"Transcript ID '{base_target_enst}' found in VCF, but no matching sequence in the provided Protein FASTA.")
 
-        # Clean the ID by removing any version numbers (.123)
+        # --- 核心提取 2：从 VEP 注释中恢复 UniProt ID，满足下游需求 ---
+        uniprot_id = ""
+        # 优先取 SWISSPROT (经过人工审核的库)，然后是 TREMBL
+        if 'SWISSPROT' in target_csq and target_csq['SWISSPROT']:
+            uniprot_id = target_csq['SWISSPROT'].split('&')[0]
+        elif 'TREMBL' in target_csq and target_csq['TREMBL']:
+            uniprot_id = target_csq['TREMBL'].split('&')[0]
+        elif 'Uniprot_ACC' in target_csq and target_csq['Uniprot_ACC']:
+            uniprot_id = target_csq['Uniprot_ACC'].split('&')[0]
+        
+        # 清理版本号 (例如 P20333.1 -> P20333)
         if uniprot_id:
             uniprot_id = uniprot_id.split('.')[0]
-
-        protein_sequence = uniprot_db.get(uniprot_id, "")
-        if uniprot_id and not protein_sequence:
-            logging.warning(f"UniProt ID '{uniprot_id}' found for transcript {target_transcript_id}, but no matching sequence in the provided FASTA.")
 
         hgvsp_full = target_csq.get("HGVSp", "/")
         protein_change = self.parse_protein_change(hgvsp_full)
@@ -175,8 +176,9 @@ class SequenceProcessor:
             "gene": target_csq.get("SYMBOL", "/"), "transcript_id": target_transcript_id,
             "hgvsp_full": hgvsp_full.split(':')[-1] if ':' in hgvsp_full else hgvsp_full,
             "p_short": self.convert_to_short_notation(hgvsp_full), "aa_pos": pos,
-            "aa_ref": ref_aa, "aa_alt": alt_aa, "uniprot_id": uniprot_id or "",
-            "protein_sequence": protein_sequence, "phase_set": phase_set, "haplotype": genotype_phase
+            "aa_ref": ref_aa, "aa_alt": alt_aa,
+            "protein_sequence": protein_sequence, "uniprot_id": uniprot_id, # 保留了 UniProt ID
+            "phase_set": phase_set, "haplotype": genotype_phase
         }
 
     def build_local_haplotype_sequence(self, somatic_variant: Dict, all_phased_variants: Dict) -> str:
@@ -202,47 +204,32 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--report_xlsx', required=True, help='Input Excel report file.')
     parser.add_argument('--vcf_file', required=True, help='The PHASED VEP-annotated VCF file.')
-    parser.add_argument('--uniprot_fasta', required=True, help='UniProt canonical protein sequence FASTA file.')
+    parser.add_argument('--protein_fasta', required=True, help='Ensembl/GENCODE canonical protein sequence FASTA file.')
     parser.add_argument('--output_fasta', required=True, help='Output FASTA file.')
-    parser.add_argument('--window_size', type=int, default=12, help='Amino acid window size.')
+    parser.add_argument('--window_size', type=int, default=18, help='Amino acid window size.') # 默认改成18匹配你的环境
     args = parser.parse_args()
 
-    uniprot_db = load_uniprot_sequences(args.uniprot_fasta)
+    # 使用宽泛正则读取 GENCODE FASTA
+    protein_db = load_ensembl_sequences(args.protein_fasta)
     processor = SequenceProcessor(window_size=args.window_size)
 
     logging.info(f"Reading variants from {args.report_xlsx}...")
     try:
-        # 尝试读取 Excel
         df = pd.read_excel(args.report_xlsx, sheet_name="low scale variants")
-        
-        # --- 修复列名匹配问题 (Fix Column Mismatches) ---
-        # 去除列名可能存在的空格
         df.columns = df.columns.str.strip()
         
-        # 定义列名映射关系：脚本内部名称 -> Excel实际可能出现的名称
-        # 优先使用完整的名称，如果不存在则查找截断的名称
         col_chrom = 'CHROM' if 'CHROM' in df.columns else 'CHRO'
         col_manual = 'Manual_Select' if 'Manual_Select' in df.columns else 'Manual_Sele'
         
-        # 关键修复：Somatic_Status 在新表格中变成了 Primary_Statu
-        if 'Somatic_Status' in df.columns:
-            col_status = 'Somatic_Status'
-        elif 'Primary_Statu' in df.columns:
-            col_status = 'Primary_Statu'
-        elif 'Primary_Status' in df.columns:
-            col_status = 'Primary_Status'
-        else:
-            raise KeyError("Could not find a column for Status (expected 'Somatic_Status' or 'Primary_Statu')")
+        if 'Somatic_Status' in df.columns: col_status = 'Somatic_Status'
+        elif 'Primary_Statu' in df.columns: col_status = 'Primary_Statu'
+        elif 'Primary_Status' in df.columns: col_status = 'Primary_Status'
+        else: raise KeyError("Could not find a column for Status.")
 
-        logging.info(f"Using columns: CHROM='{col_chrom}', Manual_Select='{col_manual}', Status='{col_status}'")
-
-        # 筛选 Manual_Select 为 yes 的行
         selected_df = df[df[col_manual].astype(str).str.lower() == 'yes'].copy()
         
     except Exception as e:
         logging.error(f"Failed to read or process Excel file: {e}")
-        import traceback
-        traceback.print_exc()
         sys.exit(1)
 
     if selected_df.empty:
@@ -251,15 +238,11 @@ def main():
     
     selected_lookup = defaultdict(list)
     for _, row in selected_df.iterrows():
-        # 获取状态并标准化：如果表格里写的是 "Germline"，映射为脚本逻辑需要的 "Nearby Germline"
         raw_status = row[col_status]
         status = "Nearby Germline" if raw_status == "Germline" else raw_status
-        
-        # 使用动态识别到的列名 col_chrom
         key = f"{row[col_chrom]}:{row['POS']}"
         selected_lookup[key].append((row['Transcript'], row['REF'], row['ALT'], status))
 
-    logging.info(f"Found {len(selected_df)} variants selected for FASTA generation.")
     logging.info(f"Extracting full annotations from {args.vcf_file}...")
     
     all_phased_variants = defaultdict(list)
@@ -269,9 +252,8 @@ def main():
             key = f"{record.chrom}:{record.pos}"
             if key in selected_lookup:
                 for transcript, ref, alt, status in selected_lookup[key]:
-                    # 只有当 REF 和 ALT 匹配时才处理
                     if record.ref == ref and alt in record.alts:
-                        full_info = processor.get_full_variant_info(record, transcript, alt, csq_header, uniprot_db)
+                        full_info = processor.get_full_variant_info(record, transcript, alt, csq_header, protein_db)
                         if full_info:
                             all_phased_variants[status].append(full_info)
 
@@ -281,7 +263,6 @@ def main():
     with open(args.output_fasta, 'w') as f_out:
         for somatic_var in somatic_variants:
             try:
-                # 这一步依赖于 "Nearby Germline" 这个 key 是否存在于 all_phased_variants 中
                 haplotype_seq = processor.build_local_haplotype_sequence(somatic_var, all_phased_variants)
                 ref_window, rel_pos = processor.get_sequence_window(haplotype_seq, somatic_var["aa_pos"])
 
@@ -298,10 +279,11 @@ def main():
                     var_window = ref_window[:rel_pos] + alt_aa + ref_window[rel_pos + 1:]
                 
                 f_out.write(f">Ref|{somatic_var['transcript_id']}\n{ref_window}\n")
-                uniprot_id_str = somatic_var.get('uniprot_id', '')
+                
+                # 恢复输出 UniProt ID，如果不存在用 "-" 占位
+                uniprot_str = somatic_var.get('uniprot_id', '') or '-'
                 header = (f">Var|{somatic_var['transcript_id']}|{somatic_var['gene']}|"
-                          f"{somatic_var['hgvsp_full']}|{somatic_var['p_short']}|"
-                          f"{uniprot_id_str}\n")
+                          f"{somatic_var['hgvsp_full']}|{somatic_var['p_short']}|{uniprot_str}\n")
                 f_out.write(header)
                 f_out.write(f"{var_window}\n")
 
@@ -309,7 +291,6 @@ def main():
                 logging.error(f"Failed to write FASTA for {somatic_var.get('p_short')}: {e}")
 
     logging.info("FASTA generation complete.")
-
 
 if __name__ == "__main__":
     main()

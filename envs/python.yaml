@@ -12,3 +12,4 @@ dependencies:
   - openpyxl
   - pandas>=1.3
   - pyyaml
+  - pyfaidx
